@@ -1,0 +1,111 @@
+{
+  "list_snapshot": "2bb34b1d2106ac17e6d5eb348f14b0e5d68ff2ff339a14785dc1b91b53d0a4bd",
+  "rulebook_version": "SDN-MIRROR-32610f3fd32b",
+  "receipts": [
+    {
+      "receipt_id": "rcpt:d1",
+      "seq": 0,
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "action": {
+        "action_id": "act:d1",
+        "agent_id": "tollgate.shadow",
+        "mandate_id": "rulebook:SDN-MIRROR-32610f3fd32b",
+        "type": "stablecoin_payment_screen",
+        "params": {
+          "payment_id": "d1",
+          "outcome": "BLOCK",
+          "beneficiary_address": "0x43fa21d92141ba9db43052492e0deee5aa5f0a93",
+          "amount_usd": 1000,
+          "originator_info_present": true
+        },
+        "requested_at": "2023-08-24T09:00:00Z"
+      },
+      "verdict": {
+        "verdict_id": "vd:d1",
+        "action_id": "act:d1",
+        "authorizer_id": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+        "decision": "DENY",
+        "reasons": [
+          "outcome=BLOCK",
+          "rulebook_version=SDN-MIRROR-32610f3fd32b",
+          "list_snapshot=2bb34b1d2106ac17e6d5eb348f14b0e5d68ff2ff339a14785dc1b91b53d0a4bd",
+          "sanctions_hit=SDN-ETH-43fa21d9"
+        ],
+        "decided_at": "2023-08-24T09:00:00.000500Z",
+        "action_digest": "c93165e051b66018b424e63a1abcec9ead3b52dd5345fb22f5a2d8331b131be9",
+        "signature": "acaa7ef1c83b4f3f778eb8645add5d0c0cb5b1c5c3b1e721e6c55d6e7caa3dba4b3fc2492573f29070daf8d854fdf7b4f5db362d77604ccd87f2c1f56d70f801"
+      },
+      "this_hash": "9f2e3e2ef1c3366512c9e630f40a4263df695192c93d67f60997652419e47dea"
+    },
+    {
+      "receipt_id": "rcpt:d2",
+      "seq": 1,
+      "prev_hash": "9f2e3e2ef1c3366512c9e630f40a4263df695192c93d67f60997652419e47dea",
+      "action": {
+        "action_id": "act:d2",
+        "agent_id": "tollgate.shadow",
+        "mandate_id": "rulebook:SDN-MIRROR-32610f3fd32b",
+        "type": "stablecoin_payment_screen",
+        "params": {
+          "payment_id": "d2",
+          "outcome": "ALLOW",
+          "beneficiary_address": "0x000000000000000000000000000000000000c1ea",
+          "amount_usd": 1000,
+          "originator_info_present": true
+        },
+        "requested_at": "2023-08-24T09:00:02Z"
+      },
+      "verdict": {
+        "verdict_id": "vd:d2",
+        "action_id": "act:d2",
+        "authorizer_id": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+        "decision": "ALLOW",
+        "reasons": [
+          "outcome=ALLOW",
+          "rulebook_version=SDN-MIRROR-32610f3fd32b",
+          "list_snapshot=2bb34b1d2106ac17e6d5eb348f14b0e5d68ff2ff339a14785dc1b91b53d0a4bd",
+          "clean"
+        ],
+        "decided_at": "2023-08-24T09:00:02.000500Z",
+        "action_digest": "2dec2cfbd9fb717b5e6ed8ec307e389b928c61b861510fc37e0305d639265194",
+        "signature": "7a2fa1a298bbe849686a9c17b7a7d1aceda9676a0cf1e0bf1180e027c3856a9ec423202a99efdbfb1f863018d11fafab15b4fe58918f17aaa0633e24a3b5f006"
+      },
+      "this_hash": "6743fd1ba9266b12394aa4f6c6fde8441cf419f55a43cbcc152d5005be8fac27"
+    },
+    {
+      "receipt_id": "rcpt:d3",
+      "seq": 2,
+      "prev_hash": "6743fd1ba9266b12394aa4f6c6fde8441cf419f55a43cbcc152d5005be8fac27",
+      "action": {
+        "action_id": "act:d3",
+        "agent_id": "tollgate.shadow",
+        "mandate_id": "rulebook:SDN-MIRROR-32610f3fd32b",
+        "type": "stablecoin_payment_screen",
+        "params": {
+          "payment_id": "d3",
+          "outcome": "BLOCK",
+          "beneficiary_address": "0xed6e0a7e4ac94d976eebfb82ccf777a3c6bad921",
+          "amount_usd": 25,
+          "originator_info_present": true
+        },
+        "requested_at": "2023-08-24T09:00:04Z"
+      },
+      "verdict": {
+        "verdict_id": "vd:d3",
+        "action_id": "act:d3",
+        "authorizer_id": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+        "decision": "DENY",
+        "reasons": [
+          "outcome=BLOCK",
+          "rulebook_version=SDN-MIRROR-32610f3fd32b",
+          "list_snapshot=2bb34b1d2106ac17e6d5eb348f14b0e5d68ff2ff339a14785dc1b91b53d0a4bd",
+          "sanctions_hit=SDN-ETH-ed6e0a7e"
+        ],
+        "decided_at": "2023-08-24T09:00:04.000500Z",
+        "action_digest": "5b0774630c5988017b7b9a45effb8082c948df0f3d4f834aed715e56646e87a1",
+        "signature": "2b041662ff450f26675608ceaed9ec9a30e2afb6ef8d0959f63839630a873634a8010ab391aa131c7998da6210e1ee63b077681bea715f931654c5dc531e350a"
+      },
+      "this_hash": "b1ad5fc6c87e6c942e4ec30d5bd75d9032a53c046d70fef79862bc638bf28d82"
+    }
+  ]
+}
