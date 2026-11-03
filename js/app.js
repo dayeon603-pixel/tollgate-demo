@@ -5,11 +5,14 @@
  * has been edited by hand. Nothing here decides pass or fail.
  */
 import { SAMPLE_PUBLIC_KEY, ed25519Available, signedReason, verifyText } from './verifier.js';
+import { initStart } from './start.js';
 
 const SAMPLE_URL = 'data/sample_receipts.json';
 const SAMPLE_LIST_DATE = 'Aug 2023';
+const BASE_LABELS = { sample: 'Sample', yours: 'Your receipts', file: 'Opened file' };
+const REPORT_TO = 'dayeon603@gmail.com';
 const GENESIS = '0'.repeat(64);
-const ROUTES = { receipts: 'Receipts', raw: 'Raw receipts', about: 'How it runs' };
+const ROUTES = { start: 'Get started', receipts: 'Receipts', raw: 'Raw receipts', about: 'How it runs' };
 const OVERLAY_PANEL_QUERY = '(max-width: 1199px)';
 const COPIED_MS = 1200;
 const HASH_PREFIX = 12;
@@ -53,6 +56,7 @@ const ICONS = {
   copy: 'M6 6h7v7H6zM3 10V3h7',
   check: 'M3 8.5 6.5 12 13 4.5',
   cross: 'M4 4l8 8M12 4l-8 8',
+  flag: 'M4 14V2.5M4 3h8l-2 3 2 3H4',
   alert: 'M8 2.5 14.5 13.5h-13L8 2.5ZM8 6.5v3.5M8 11.5v.5',
   dash: 'M4 8h8',
   up: 'M4 10l4-4 4 4',
@@ -64,6 +68,7 @@ const verifyButton = $('tg-verify');
 const tamperButton = $('tg-tamper');
 const scenarioSelect = $('tg-scenario');
 const restoreButton = $('tg-restore');
+const useSampleButton = $('tg-use-sample');
 const editLink = $('tg-edit');
 const resultBox = $('tg-result');
 const fileBox = $('tg-file');
@@ -75,6 +80,11 @@ const state = {
   phase: 'loading', // loading | ready | load-error
   sampleText: '',
   sampleReceipts: [],
+  // The file Restore and Simulate tampering start from: the sample, or receipts made on this page.
+  baseText: '',
+  baseReceipts: [],
+  baseKind: 'sample', // sample | yours | file
+  baseListDate: SAMPLE_LIST_DATE,
   outcome: null,
   totalMs: 0,
   busy: false,
@@ -174,7 +184,7 @@ function flatten(value, path = '', depth = 0, out = []) {
 
 /** Fields that differ from the published sample, for display only. The verifier never reads this. */
 function sampleDifferences(receipt, index) {
-  const original = state.sampleReceipts[index];
+  const original = state.baseReceipts[index];
   if (original === undefined) return new Map();
   const before = new Map(flatten(original));
   const differences = new Map();
@@ -184,56 +194,90 @@ function sampleDifferences(receipt, index) {
   return differences;
 }
 
+/** Index used by a scenario: its usual receipt, or the last one in a shorter file. */
+function pick(count, wanted) {
+  return Math.min(wanted, count - 1);
+}
+
 const SCENARIOS = [
   {
     id: 'fingerprint',
-    label: 'List fingerprint, seq 0',
+    label: (count) => `List fingerprint, seq ${pick(count, 0)}`,
     apply(copy) {
-      const reasons = copy.receipts[0].verdict.reasons;
+      const i = pick(copy.receipts.length, 0);
+      const reasons = copy.receipts[i].verdict.reasons;
       const at = reasons.findIndex((reason) => reason.startsWith('list_snapshot='));
       const before = reasons[at].slice('list_snapshot='.length);
       const after = (before[0] === '3' ? '4' : '3') + before.slice(1);
       reasons[at] = `list_snapshot=${after}`;
-      return `Simulated: changed one character in receipt #0. Its list fingerprint now starts ${after.slice(0, 8)} instead of ${before.slice(0, 8)}, as if a different list had been checked.`;
+      return `Simulated: changed one character in receipt #${i}. Its list fingerprint now starts ${after.slice(0, 8)} instead of ${before.slice(0, 8)}, as if a different list had been checked.`;
     },
   },
   {
     id: 'amount',
-    label: 'Payment amount, seq 1',
+    label: (count) => `Payment amount, seq ${pick(count, 1)}`,
     apply(copy) {
-      const params = copy.receipts[1].action.params;
+      const i = pick(copy.receipts.length, 1);
+      const params = copy.receipts[i].action.params;
       const before = params.amount_usd;
+      if (typeof before !== 'number') {
+        params.amount_usd = 9000;
+        return `Simulated: added amount_usd 9000 to receipt #${i}, which was signed without an amount.`;
+      }
       params.amount_usd = before + 8000;
-      return `Simulated: changed amount_usd in receipt #1 from ${before} to ${params.amount_usd}.`;
+      return `Simulated: changed amount_usd in receipt #${i} from ${before} to ${params.amount_usd}.`;
     },
   },
   {
     id: 'outcome',
-    label: 'Outcome BLOCK to ALLOW, seq 2',
+    label: (count) => `Flip the outcome, seq ${pick(count, 2)}`,
     apply(copy) {
-      copy.receipts[2].action.params.outcome = 'ALLOW';
-      return 'Simulated: changed outcome in receipt #2 from BLOCK to ALLOW in the payment details.';
+      const i = pick(copy.receipts.length, 2);
+      const params = copy.receipts[i].action.params;
+      const before = params.outcome;
+      params.outcome = before === 'BLOCK' ? 'ALLOW' : 'BLOCK';
+      return `Simulated: changed outcome in receipt #${i} from ${before} to ${params.outcome} in the payment details.`;
     },
   },
   {
     id: 'signature',
-    label: 'One signature digit, seq 1',
+    label: (count) => `One signature digit, seq ${pick(count, 1)}`,
     apply(copy) {
-      const verdict = copy.receipts[1].verdict;
+      const i = pick(copy.receipts.length, 1);
+      const verdict = copy.receipts[i].verdict;
       const flipped = verdict.signature[0] === 'a' ? 'b' : 'a';
       verdict.signature = flipped + verdict.signature.slice(1);
-      return `Simulated: changed the first digit of the signature in receipt #1 to ${flipped}.`;
+      return `Simulated: changed the first digit of the signature in receipt #${i} to ${flipped}.`;
     },
   },
   {
     id: 'drop',
-    label: 'Drop the last receipt',
+    minimum: 2,
+    label: () => 'Drop the last receipt',
     apply(copy) {
       const dropped = copy.receipts.pop();
       return `Simulated: removed receipt #${dropped.seq}. This check still passes, because nothing in the remaining receipts points forward. Without a seal, a file missing its last receipt looks complete.`;
     },
   },
 ];
+
+function renderScenarios() {
+  const count = state.baseReceipts.length;
+  const keep = scenarioSelect.value;
+  const usable = SCENARIOS.filter(({ minimum = 1 }) => count >= minimum);
+  scenarioSelect.replaceChildren(...usable.map(({ id, label }) => el('option', { text: label(count), attrs: { value: id } })));
+  if (usable.some(({ id }) => id === keep)) scenarioSelect.value = keep;
+}
+
+/** Makes a file the one Restore and Simulate tampering start from, and shows it. */
+function setBase(text, kind, listDate, note = null) {
+  state.baseText = text;
+  state.baseReceipts = JSON.parse(text).receipts;
+  state.baseKind = kind;
+  state.baseListDate = listDate;
+  renderScenarios();
+  change(text, note);
+}
 
 /* Shared pieces */
 
@@ -303,14 +347,14 @@ function renderTop() {
   const fallback = loading ?? failedLoad ?? unreadable;
   const version = fallback ?? asText(file.rulebook_version);
   const print = fallback ?? prefix(file.list_snapshot);
-  const sampleFile = parseFile(state.sampleText);
-  const sameList = file && sampleFile && file.list_snapshot === sampleFile.list_snapshot;
+  const baseFile = parseFile(state.baseText);
+  const sameList = file && baseFile && file.list_snapshot === baseFile.list_snapshot;
   $('tg-meta-version').textContent = version;
   $('tg-meta-print').textContent = print;
   $('tg-meta-print').title = fallback ? '' : asText(file.list_snapshot);
-  $('tg-meta-date').textContent = fallback ?? (sameList ? SAMPLE_LIST_DATE : 'Not known');
-  $('tg-meta-file').textContent = state.phase !== 'ready' ? fallback : fileBox.value === state.sampleText ? 'Sample, unchanged' : 'Modified';
-  $('tg-meta-file').dataset.modified = String(state.phase === 'ready' && fileBox.value !== state.sampleText);
+  $('tg-meta-date').textContent = fallback ?? (sameList ? state.baseListDate ?? 'Not known' : 'Not known');
+  $('tg-meta-file').textContent = state.phase !== 'ready' ? fallback : fileBox.value === state.baseText ? `${BASE_LABELS[state.baseKind]}, unchanged` : 'Modified';
+  $('tg-meta-file').dataset.modified = String(state.phase === 'ready' && fileBox.value !== state.baseText);
   $('tg-chip').replaceChildren(statusChip());
 }
 
@@ -369,7 +413,7 @@ function renderBanner() {
     bannerState = 'pass';
     const total = outcome.receipts.reduce((sum, receipt) => sum + receipt.checks.length, 0);
     nodes.push(
-      el('p', { cls: 'banner__lead', kids: [icon('check'), el('span', { text: `Verified. All ${outcome.receipts.length} receipts check out.` })] }),
+      el('p', { cls: 'banner__lead', kids: [icon('check'), el('span', { text: outcome.receipts.length === 1 ? 'Verified. The receipt checks out.' : `Verified. All ${outcome.receipts.length} receipts check out.` })] }),
       el('p', { cls: 'banner__detail mono', text: `${total} checks in ${formatMs(state.totalMs)}, in this browser` }),
     );
     nodes.push(seeChecks());
@@ -464,8 +508,8 @@ function tableMessage(title, detail, action) {
 }
 
 function restoreAction() {
-  const button = el('button', { cls: 'btn', text: 'Restore sample', attrs: { type: 'button' } });
-  button.addEventListener('click', () => change(state.sampleText, null));
+  const button = el('button', { cls: 'btn', text: state.baseKind === 'sample' ? 'Restore sample' : 'Restore original', attrs: { type: 'button' } });
+  button.addEventListener('click', () => change(state.baseText, null));
   return button;
 }
 
@@ -512,7 +556,7 @@ function renderTable() {
 
 function buildTable(entries) {
   const results = resultsList();
-  const table = el('table', { cls: 'grid', attrs: { role: 'table', 'aria-label': 'Sample receipts' } });
+  const table = el('table', { cls: 'grid', attrs: { role: 'table', 'aria-label': 'Receipts' } });
   table.append(
     el('thead', {
       attrs: { role: 'rowgroup' },
@@ -783,7 +827,7 @@ function fieldRow(path, value, differences, extra) {
             cls: 'field__text',
             kids: [el('span', { cls: 'mono', text }), text.length > 20 && copyButton(text, path)],
           }),
-          isChanged && el('span', { cls: 'field__was', text: before === undefined ? 'Not in the sample' : `In the sample: ${asText(before)}` }),
+          isChanged && el('span', { cls: 'field__was', text: before === undefined ? (state.baseKind === 'sample' ? 'Not in the sample' : 'Not in the original') : `${state.baseKind === 'sample' ? 'In the sample' : 'Originally'}: ${asText(before)}` }),
           extra,
         ],
       }),
@@ -970,11 +1014,22 @@ function renderRawStatus() {
     return;
   }
   const file = parseFile(fileBox.value);
-  box.textContent = !file ? 'Not valid receipts JSON' : `Valid JSON, ${file.receipts.length} receipt${file.receipts.length === 1 ? '' : 's'}${fileBox.value === state.sampleText ? ', unchanged sample' : ', modified'}`;
+  box.textContent = !file ? 'Not valid receipts JSON' : `Valid JSON, ${file.receipts.length} receipt${file.receipts.length === 1 ? '' : 's'}${fileBox.value === state.baseText ? (state.baseKind === 'sample' ? ', unchanged sample' : `, ${BASE_LABELS[state.baseKind].toLowerCase()}, unchanged`) : ', modified'}`;
   box.dataset.bad = String(!file);
 }
 
 /* Orchestration */
+
+const NOTICES = {
+  sample: ['Sample data.', ' The payments are made up and the signing key is a published demo key that anyone can use.'],
+  yours: ['Your receipts.', ' Made on this page and signed with the published demo key that anyone can use, so they say nothing about who signed. They live in this tab only.'],
+  file: ['Opened file.', ' Checked against the published demo key. A pass shows the receipts are unchanged since signing with that key.'],
+};
+
+function renderNotice() {
+  const [lead, rest] = NOTICES[state.baseKind];
+  $('tg-notice-text').replaceChildren(el('strong', { text: lead }), document.createTextNode(rest));
+}
 
 function renderAll() {
   const receipts = parseFile(fileBox.value)?.receipts ?? null;
@@ -990,7 +1045,10 @@ function renderAll() {
   verifyButton.disabled = !ready || state.busy;
   tamperButton.disabled = !ready || state.busy;
   scenarioSelect.disabled = !ready || state.busy;
-  restoreButton.disabled = !ready || fileBox.value === state.sampleText;
+  restoreButton.disabled = !ready || fileBox.value === state.baseText;
+  restoreButton.textContent = state.baseKind === 'sample' ? 'Restore sample' : 'Restore original';
+  useSampleButton.hidden = state.baseKind === 'sample';
+  renderNotice();
 }
 
 /** Only the newest run may report, so an old pass can never land on text that has since changed. */
@@ -1049,12 +1107,13 @@ function bindEvents() {
   verifyButton.addEventListener('click', () => void run());
   tamperButton.addEventListener('click', () => {
     const scenario = SCENARIOS.find(({ id }) => id === scenarioSelect.value) ?? SCENARIOS[0];
-    const copy = JSON.parse(state.sampleText);
+    const copy = JSON.parse(state.baseText);
     const nextNote = scenario.apply(copy);
     change(JSON.stringify(copy, null, 2), nextNote);
     void run();
   });
-  restoreButton.addEventListener('click', () => change(state.sampleText, null));
+  restoreButton.addEventListener('click', () => change(state.baseText, null));
+  useSampleButton.addEventListener('click', () => setBase(state.sampleText, 'sample', SAMPLE_LIST_DATE));
   fileBox.addEventListener('input', () => {
     state.latestRun++;
     state.busy = false;
@@ -1066,7 +1125,6 @@ function bindEvents() {
 
 function bindShell() {
   document.querySelectorAll('[data-icon]').forEach((slot) => slot.replaceWith(icon(slot.dataset.icon)));
-  SCENARIOS.forEach(({ id, label }) => scenarioSelect.append(el('option', { text: label, attrs: { value: id } })));
   $('tg-limits-key').textContent = SAMPLE_PUBLIC_KEY;
   $('tg-limits-key').after(copyButton(SAMPLE_PUBLIC_KEY, 'public demo key'));
   const openLimits = () => limits.showModal();
@@ -1083,11 +1141,47 @@ function bindShell() {
     const route = routeFromHash();
     if (route) setRoute(route, { focus: true });
   });
-  setRoute(routeFromHash() ?? 'receipts');
+  setRoute(routeFromHash() ?? 'start');
+}
+
+/**
+ * A problem report the person sends themselves: what the page is showing and which browser, put
+ * into an email draft. Nothing is sent automatically, and receipt contents are left out.
+ */
+function problemReport() {
+  const outcome = state.outcome;
+  const lines = [
+    'What I did (steps):',
+    '1.',
+    '2.',
+    '',
+    'What I expected:',
+    '',
+    'What happened instead:',
+    '',
+    'Please attach a screenshot if you can.',
+    '',
+    '--- Filled in by the page. Edit or delete anything you like. ---',
+    `Page: ${location.origin}${location.pathname}#${state.route}`,
+    `Shown: ${resultBox.textContent.trim().slice(0, 400) || 'nothing'}`,
+    `Result: ${outcome ? outcome.kind : state.busy ? 'checking' : 'not run'}`,
+    outcome?.kind === 'fail' ? `Failed checks: ${outcome.receipts.filter((r) => r.failed.length).map((r) => `#${r.index} ${r.failed.map(({ id }) => id).join('/')}`).join('; ') || outcome.fileProblems.join('; ')}` : null,
+    outcome?.kind === 'unreadable' ? `Problems: ${outcome.problems.join('; ')}` : null,
+    `File: ${BASE_LABELS[state.baseKind]}${fileBox.value === state.baseText ? ', unchanged' : ', modified'}`,
+    `Page state: ${state.phase}${state.noCrypto ? ', no Ed25519 in this browser' : ''}`,
+    `Browser: ${navigator.userAgent}`,
+    `Language: ${navigator.language}`,
+    `Window: ${window.innerWidth}x${window.innerHeight}`,
+    `Time: ${new Date().toISOString()}`,
+  ].filter((line) => line !== null);
+  return `mailto:${REPORT_TO}?subject=${encodeURIComponent('Tollgate: problem report')}&body=${encodeURIComponent(lines.join('\n'))}`;
 }
 
 async function start() {
   bindShell();
+  const report = $('tg-report');
+  const refreshReport = () => { report.href = problemReport(); };
+  ['click', 'focus', 'pointerenter'].forEach((type) => report.addEventListener(type, refreshReport));
   renderAll();
   try {
     state.noCrypto = !(await ed25519Available());
@@ -1097,12 +1191,24 @@ async function start() {
     state.sampleText = JSON.stringify(parsed, null, 2);
     state.sampleReceipts = parsed.receipts;
     state.phase = 'ready';
+    state.baseText = state.sampleText;
+    state.baseReceipts = parsed.receipts;
+    renderScenarios();
     fileBox.value = state.sampleText;
     bindEvents();
   } catch {
     state.phase = 'load-error';
   }
   renderAll();
+  void initStart({
+    openInVerifier(text, listDate, kind) {
+      if (state.phase !== 'ready') return;
+      setBase(text, kind, listDate);
+      location.hash = 'receipts';
+      setRoute('receipts', { focus: true });
+      void run();
+    },
+  });
 }
 
 void start();

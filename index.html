@@ -5,172 +5,297 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>Tollgate receipts demo</title>
-  <meta name="description" content="Signed proof of which sanctions list you checked, and when.">
+  <title>Tollgate · Signed proof of sanctions checks for stablecoins</title>
+  <meta name="description" content="Every screening decision gets a signed receipt showing which sanctions list was checked, and when. Anyone can verify it offline.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="css/style.css">
-  <script type="module" src="js/app.js"></script>
+  <link rel="stylesheet" href="css/site.css">
+  <script type="module" src="js/site.js"></script>
 </head>
 <body>
-  <a class="skip" href="#tg-title">Skip to content</a>
-  <div class="shell">
-    <aside class="side">
-      <div class="side__brand">
-        <img class="side__mark" src="favicon.svg" alt="" width="24" height="24">
-        <span class="side__name">Tollgate</span>
-      </div>
-      <p class="demo-badge"><span class="demo-badge__dot" aria-hidden="true"></span>Demo: sample data</p>
-      <nav class="side__nav" aria-label="Main">
-        <a class="navlink" href="#receipts" data-route="receipts"><span data-icon="list"></span>Receipts</a>
-        <a class="navlink" href="#raw" data-route="raw"><span data-icon="code"></span>Raw receipts</a>
-        <a class="navlink" href="#about" data-route="about"><span data-icon="info"></span>How it runs</a>
-        <button type="button" class="navlink" id="tg-limits-open"><span data-icon="scale"></span><span class="navlink__long">What this check does and doesn't prove</span><span class="navlink__short">Limits</span></button>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="#product">Product</a>
+        <a href="#how">How it works</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html#sign-in">Sign in</a>
       </nav>
-      <div class="side__foot">
-        <a class="side__contact" href="mailto:dayeon603@gmail.com">Request a walkthrough</a>
-      </div>
-    </aside>
+      <a class="btn btn--ghost btn--sm nav__cta" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+    </div>
+  </header>
 
-    <div class="app">
-      <header class="top">
-        <h1 class="top__title" id="tg-title" tabindex="-1">Receipts</h1>
-        <dl class="top__meta">
-          <div><dt>List version</dt><dd class="mono" id="tg-meta-version">Loading</dd></div>
-          <div><dt>List date</dt><dd id="tg-meta-date" title="From the sample's description. This date is not a signed field.">Loading</dd></div>
-          <div><dt>List fingerprint</dt><dd class="mono" id="tg-meta-print">Loading</dd></div>
-          <div><dt>File</dt><dd id="tg-meta-file">Loading</dd></div>
-        </dl>
-        <div class="top__status"><span class="top__status-label">Verifier</span><span id="tg-chip"></span></div>
-      </header>
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap hero__grid">
+        <div class="hero__copy">
+          <p class="eyebrow">Sanctions screening receipts</p>
+          <h1 class="hero__title">Signed proof of sanctions checks for stablecoins</h1>
+          <p class="hero__sub">Every screening decision gets a signed receipt showing which sanctions list was checked, and when. Anyone can verify it offline.</p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="app.html">Try the receipt check<svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5"/></svg></a>
+            <a class="btn btn--ghost" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+          </div>
+        </div>
 
-      <div class="body" id="tg-body">
-        <main class="work">
-          <noscript><p class="noscript">The check runs in your browser, so it needs JavaScript turned on.</p></noscript>
-
-          <div class="toolbar" id="tg-toolbar">
-            <button type="button" id="tg-verify" class="btn btn--primary" disabled><span data-icon="play"></span>Verify chain</button>
-            <div class="toolbar__group">
-              <label class="sr" for="tg-scenario">Field to tamper with</label>
-              <select id="tg-scenario" class="select" disabled></select>
-              <button type="button" id="tg-tamper" class="btn" disabled>Simulate tampering</button>
+        <figure class="hero__visual">
+          <div class="rcpt" aria-label="Sample receipt rcpt:d1">
+            <div class="rcpt__head">
+              <div>
+                <p class="rcpt__label">Receipt</p>
+                <p class="rcpt__id mono">rcpt:d1 · seq 0</p>
+              </div>
+              <span class="chip chip--block">Block</span>
             </div>
-            <button type="button" id="tg-restore" class="btn" disabled>Restore sample</button>
-            <a class="btn" id="tg-edit" href="#raw">Edit raw receipts</a>
+            <dl class="rcpt__fields">
+              <div><dt>Address checked</dt><dd class="mono">0x43fa21d9…5aa5f0a93</dd></div>
+              <div><dt>Amount</dt><dd>$1,000</dd></div>
+              <div><dt>Matched entry</dt><dd class="mono">SDN-ETH-43fa21d9</dd></div>
+              <div><dt>List version</dt><dd class="mono">SDN-MIRROR-32610f3fd32b</dd></div>
+              <div><dt>List fingerprint</dt><dd class="mono">2bb34b1d…53d0a4bd</dd></div>
+              <div><dt>Checked at</dt><dd>2023-08-24 09:00:00 UTC</dd></div>
+            </dl>
+            <div class="rcpt__sig">
+              <span class="rcpt__sig-label">Ed25519 signature</span>
+              <code class="mono">acaa7ef1c83b4f3f…56d70f801</code>
+            </div>
+            <div class="rcpt__status" id="hero-status" data-state="idle" role="status" aria-live="polite">
+              <span class="dot" aria-hidden="true"></span><span id="hero-status-text">Signed with the public sample key</span>
+            </div>
           </div>
 
-          <div id="tg-result" class="banner" data-state="loading" role="status" aria-live="polite"></div>
-
-          <section class="view" data-view="receipts">
-            <p class="notice"><strong>Sample data.</strong> The payments are made up and the signing key is a published demo key that anyone can use. <button type="button" class="linkbtn" id="tg-limits-open-2">Read what this check does and doesn't prove</button></p>
-
-            <section class="card" aria-labelledby="tg-table-head">
-              <div class="card__head">
-                <h2 class="card__title" id="tg-table-head">Receipts</h2>
-                <div class="seg" id="tg-filter" role="group" aria-label="Filter by decision"></div>
-              </div>
-              <div class="tablewrap" id="tg-tablewrap"></div>
-              <div class="card__foot" id="tg-table-foot"></div>
-            </section>
-
-            <section class="card" aria-labelledby="tg-chain-head">
-              <div class="card__head">
-                <h2 class="card__title" id="tg-chain-head">Hash chain</h2>
-                <p class="card__sub" id="tg-chain-sub"></p>
-              </div>
-              <div class="chain" id="tg-chain"></div>
-            </section>
-
-            <section class="card" id="tg-checks-card" aria-labelledby="tg-checks-head">
-              <div class="card__head">
-                <h2 class="card__title" id="tg-checks-head" tabindex="-1">Verification run</h2>
-                <p class="card__sub" id="tg-checks-sub"></p>
-              </div>
-              <div id="tg-checks"></div>
-            </section>
-          </section>
-
-          <section class="view" data-view="raw" hidden>
-            <section class="card">
-              <div class="card__head">
-                <h2 class="card__title"><label for="tg-file">Receipt file</label></h2>
-                <p class="card__sub" id="tg-raw-status"></p>
-              </div>
-              <p class="raw__hint">Change anything you like, such as a digit of a signature, then press Verify chain. This text is what the verifier reads, and the Receipts view is drawn from it.</p>
-              <textarea id="tg-file" class="file" rows="24" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="tg-raw-status"></textarea>
-            </section>
-          </section>
-
-          <section class="view" data-view="about" hidden>
-            <section class="card about__lead">
-              <p class="about__claim">Signed proof of which sanctions list you checked, and when.</p>
-              <p class="about__audience">For stablecoin issuers and exchanges.</p>
-            </section>
-            <div class="about__grid">
-              <section class="card">
-                <div class="card__head"><h2 class="card__title">What a receipt contains</h2></div>
-                <ul class="plain">
-                  <li>The decision: allow or block, and the list entry it matched</li>
-                  <li>The address and amount that were checked</li>
-                  <li>A fingerprint of the exact list used</li>
-                  <li>The time of the check</li>
-                  <li>A digital signature over the decision</li>
-                  <li>A link to the receipt before it</li>
-                </ul>
-              </section>
-              <section class="card">
-                <div class="card__head"><h2 class="card__title">How it runs</h2></div>
-                <ul class="plain">
-                  <li>You run Tollgate on your own machine.</li>
-                  <li>It downloads OFAC's sanctions list and compares addresses locally.</li>
-                  <li>The addresses you check stay on your machine.</li>
-                  <li>Your signing key is created there too.</li>
-                  <li>If you seal receipts, only their hashes go out, to public timestamp services.</li>
-                  <li>Anyone with a receipt can check it offline, without contacting us.</li>
-                </ul>
-              </section>
-            </div>
-            <section class="card about__contact">
-              <a class="btn btn--primary" href="mailto:dayeon603@gmail.com">Request a walkthrough</a>
-              <p>Dayeon Kang, Founder</p>
-            </section>
-          </section>
-        </main>
-
-        <aside class="panel" id="tg-panel" aria-label="Receipt detail" hidden></aside>
+          <ol class="chain" aria-label="Hash chain of the three sample receipts">
+            <li class="chain__node"><span class="chain__seq">#0</span><span class="chip chip--block chip--xs">Block</span><code class="mono">9f2e3e2e…</code></li>
+            <li class="chain__node"><span class="chain__seq">#1</span><span class="chip chip--allow chip--xs">Allow</span><code class="mono">6743fd1b…</code></li>
+            <li class="chain__node"><span class="chain__seq">#2</span><span class="chip chip--block chip--xs">Block</span><code class="mono">b1ad5fc6…</code></li>
+          </ol>
+          <figcaption class="caption">Rendered from the three-receipt sample file. Each receipt carries the hash of the one before it. Payments are made up; the key is a public demo key.</figcaption>
+        </figure>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <dialog class="drawer" id="tg-limits" aria-labelledby="tg-limits-title">
-    <div class="drawer__head">
-      <h2 id="tg-limits-title">What this check does and doesn't prove</h2>
-      <button type="button" class="iconbtn" id="tg-limits-close" aria-label="Close"><span data-icon="close"></span></button>
-    </div>
-    <div class="drawer__body">
-      <h3>What it checks</h3>
-      <ul class="plain">
-        <li>The signature matches the signed decision.</li>
-        <li>The decision was signed by the sample key.</li>
-        <li>The payment details match the signed decision.</li>
-        <li>Each receipt's fingerprint matches its contents.</li>
-        <li>Each receipt links to the one before it.</li>
-      </ul>
-      <p>The check runs in this browser and sends nothing anywhere. It shows these receipts are unchanged since they were signed. It does not re-run the screening.</p>
+    <!-- Stats -->
+    <section class="stats" aria-labelledby="stats-title">
+      <div class="wrap">
+        <h2 class="sr" id="stats-title">Figures</h2>
+        <ul class="stats__row">
+          <li class="stat">
+            <p class="stat__num">93%</p>
+            <p class="stat__text">of USDC freezes since December 2023 where official public data can't show the sanctions listing came first</p>
+            <p class="stat__basis">Basis: founder's study of 532 sanctioned addresses</p>
+          </li>
+          <li class="stat">
+            <p class="stat__num">7 of 10</p>
+            <p class="stat__text">freezes on October 28 where Tollgate's timestamps show the listing came first</p>
+            <p class="stat__basis">Basis: Tollgate timestamps; evidence of order only</p>
+          </li>
+          <li class="stat">
+            <p class="stat__num">45,933</p>
+            <p class="stat__text">receipts produced on public transfers, every one verified offline</p>
+            <p class="stat__basis">Basis: 2.77 hours of public transfers</p>
+          </li>
+          <li class="stat" id="stat-live" hidden>
+            <p class="stat__num"><span id="stat-live-ms">0</span> ms</p>
+            <p class="stat__text">to verify the sample chain in your browser</p>
+            <p class="stat__basis">Basis: measured just now on this device by the real verifier</p>
+          </li>
+        </ul>
+      </div>
+    </section>
 
-      <h3>What it doesn't do</h3>
-      <ul class="plain">
-        <li>Match names or use other lists. It matches exact addresses on OFAC's list only.</li>
-        <li>Move, freeze or block funds. Your system acts on the decision.</li>
-        <li>Make a legal determination.</li>
-        <li>Show that the list itself was complete or current.</li>
-        <li>Catch every removal on its own. Someone with the files could remove a receipt and relink the rest, and this check would still pass. A seal shows that, and only for receipts up to the last seal.</li>
-        <li>Notice a dropped last receipt. Without a seal, a file missing its last receipt still passes. To see it happen, choose "Drop the last receipt" next to Simulate tampering.</li>
-      </ul>
+    <!-- Features -->
+    <section class="features" id="product" aria-labelledby="product-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Product</p>
+          <h2 class="section-title" id="product-title">A record of every check you can hand to anyone</h2>
+        </div>
 
-      <h3>About this sample</h3>
-      <p>Made by Tollgate's signing engine. The payments are made up and never happened. The blocked addresses are real entries on a public copy of OFAC's list from August 2023. The signing key is a published demo key that anyone can use, so this sample shows how the check works and says nothing about who signed.</p>
-      <p class="drawer__key">Public demo key<code id="tg-limits-key"></code></p>
+        <div class="cards">
+          <!-- 1 -->
+          <article class="card card--wide">
+            <div class="card__copy">
+              <h3 class="card__title">Screen with proof</h3>
+              <p class="card__text">Each allow or block decision becomes a signed receipt that names the list version and fingerprint it was checked against.</p>
+            </div>
+            <figure class="mock">
+              <div class="win">
+                <div class="win__bar"><span></span><span></span><span></span><p class="win__name">Receipts</p></div>
+                <div class="win__meta">
+                  <div><span>List version</span><code class="mono">SDN-MIRROR-32610f3fd32b</code></div>
+                  <div><span>Fingerprint</span><code class="mono">2bb34b1d…53d0a4bd</code></div>
+                </div>
+                <table class="tbl">
+                  <thead><tr><th scope="col">Seq</th><th scope="col">Decision</th><th scope="col">Address</th><th scope="col" class="num">Amount</th><th scope="col" class="hide-sm">Checked at (UTC)</th></tr></thead>
+                  <tbody>
+                    <tr><td>0</td><td><span class="chip chip--block chip--xs">Block</span></td><td class="mono">0x43fa…0a93</td><td class="num">$1,000</td><td class="hide-sm">09:00:00</td></tr>
+                    <tr><td>1</td><td><span class="chip chip--allow chip--xs">Allow</span></td><td class="mono">0x0000…c1ea</td><td class="num">$1,000</td><td class="hide-sm">09:00:02</td></tr>
+                    <tr><td>2</td><td><span class="chip chip--block chip--xs">Block</span></td><td class="mono">0xed6e…d921</td><td class="num">$25</td><td class="hide-sm">09:00:04</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <figcaption class="mock__label">Illustration from sample data</figcaption>
+            </figure>
+          </article>
+
+          <!-- 2 -->
+          <article class="card">
+            <div class="card__copy">
+              <h3 class="card__title">Two-person clearing</h3>
+              <p class="card__text">A match can't be cleared by one person. Clearing needs a second, different reviewer, and both approvals are recorded.</p>
+            </div>
+            <figure class="mock">
+              <div class="panel">
+                <div class="panel__head">
+                  <span class="chip chip--block chip--xs">Match</span>
+                  <code class="mono">SDN-ETH-43fa21d9</code>
+                </div>
+                <ol class="approvals">
+                  <li class="approval approval--done"><span class="approval__mark" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 8.5 2.5 2.5L12 5.5"/></svg></span><span><strong>Reviewer 1</strong><span class="approval__note">Approval recorded</span></span></li>
+                  <li class="approval approval--wait"><span class="approval__mark" aria-hidden="true"></span><span><strong>Reviewer 2</strong><span class="approval__note">Must be a different person</span></span></li>
+                </ol>
+                <div class="panel__foot"><span class="btn-mock" aria-hidden="true">Clear match</span><span class="panel__hint">Locked until 2 of 2</span></div>
+              </div>
+              <figcaption class="mock__label">Illustration from sample data</figcaption>
+            </figure>
+          </article>
+
+          <!-- 3 -->
+          <article class="card">
+            <div class="card__copy">
+              <h3 class="card__title">Check it offline</h3>
+              <p class="card__text">The verifier checks every signature and hash link on its own machine. Change one field and the check fails.</p>
+            </div>
+            <figure class="mock">
+              <div class="panel">
+                <ul class="checks">
+                  <li><span>Signature</span><span class="res res--pass">Pass</span></li>
+                  <li><span>Payment details</span><span class="res res--pass">Pass</span></li>
+                  <li><span>this_hash</span><span class="res res--pass">Pass</span></li>
+                  <li><span>Chain link</span><span class="res res--pass">Pass</span></li>
+                </ul>
+                <div class="tamper">
+                  <p class="tamper__what"><span class="mono">amount_usd</span> in receipt #1: <span class="mono">1000</span> to <span class="mono">9000</span></p>
+                  <p class="tamper__res"><span class="res res--fail">Fail</span>The payment details changed after signing.</p>
+                </div>
+              </div>
+              <figcaption class="mock__label">Illustration from sample data</figcaption>
+            </figure>
+          </article>
+
+          <!-- 4 -->
+          <article class="card card--wide">
+            <div class="card__copy">
+              <h3 class="card__title">Seal it in time</h3>
+              <p class="card__text">Every hour, the hash of the newest receipt is timestamped through an independent service and anchored in Bitcoin. Only the hash leaves your machine.</p>
+            </div>
+            <figure class="mock">
+              <ol class="seal">
+                <li class="seal__step">
+                  <span class="seal__k">Chain head</span>
+                  <code class="mono">b1ad5fc6c87e6c94…</code>
+                  <span class="seal__v">Receipt #2</span>
+                </li>
+                <li class="seal__step">
+                  <span class="seal__k">Hourly seal</span>
+                  <code class="mono">SHA-256 only</code>
+                  <span class="seal__v">Sent out once an hour</span>
+                </li>
+                <li class="seal__step">
+                  <span class="seal__k">Timestamp service</span>
+                  <code class="mono">Independent</code>
+                  <span class="seal__v">Returns a proof</span>
+                </li>
+                <li class="seal__step">
+                  <span class="seal__k">Bitcoin</span>
+                  <code class="mono">Anchored</code>
+                  <span class="seal__v">Checkable by anyone</span>
+                </li>
+              </ol>
+              <figcaption class="mock__label">Illustration from sample data</figcaption>
+            </figure>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="how" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">How it works</p>
+          <h2 class="section-title" id="how-title">Three steps, all on your machine</h2>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <span class="step__n">1</span>
+            <h3 class="step__title">Screen</h3>
+            <p>Tollgate downloads OFAC's sanctions list and compares each payment address against it locally. The addresses you check stay with you.</p>
+          </li>
+          <li class="step">
+            <span class="step__n">2</span>
+            <h3 class="step__title">Sign and chain</h3>
+            <p>Each decision is signed with your key and linked to the receipt before it, with the list version and fingerprint inside.</p>
+          </li>
+          <li class="step">
+            <span class="step__n">3</span>
+            <h3 class="step__title">Seal and share</h3>
+            <p>Seal the chain each hour. Hand the receipts to anyone, and they can check them offline without contacting us.</p>
+          </li>
+        </ol>
+
+        <div class="limits">
+          <h3 class="limits__title">What it doesn't do</h3>
+          <ul class="limits__list">
+            <li>Matches exact addresses only.</li>
+            <li>Does no name matching.</li>
+            <li>Moves no funds. Your system acts on the decision.</li>
+            <li>Makes no legal determination.</li>
+            <li>Unsealed records can be rewritten by whoever holds the key.</li>
+            <li>The sample key is public, so the sample says nothing about who signed.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta" aria-labelledby="cta-title">
+      <div class="wrap cta__inner">
+        <div>
+          <h2 class="cta__title" id="cta-title">Check a receipt yourself</h2>
+          <p class="cta__sub">Verify the sample chain in your browser, then try tampering with it.</p>
+        </div>
+        <div class="hero__actions">
+          <a class="btn btn--light" href="app.html">Try the receipt check</a>
+          <a class="btn btn--outline-light" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html">Contact</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
     </div>
-  </dialog>
+  </footer>
 </body>
 </html>

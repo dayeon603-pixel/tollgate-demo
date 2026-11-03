@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>FAQ · Tollgate</title>
+  <meta name="description" content="Short answers about Tollgate and its demo.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="./#product">Product</a>
+        <a href="./#how">How it works</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html#sign-in">Sign in</a>
+      </nav>
+      <a class="btn btn--ghost btn--sm nav__cta" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+    </div>
+  </header>
+  <main id="main" class="doc">
+    <div class="wrap doc__wrap">
+      <h1 class="doc__title">FAQ</h1>
+      <dl class="faq">
+        <div><dt>What does Tollgate do?</dt><dd>It screens payment addresses against OFAC's sanctions list and gives every decision a signed receipt that names the list version and the time. Anyone with the receipt can check it offline.</dd></div>
+        <div><dt>Where does it run?</dt><dd>On your own machine. It downloads OFAC's list and compares addresses locally. If you seal receipts, only their hashes go out, to public timestamp services.</dd></div>
+        <div><dt>Does the demo send the address I type anywhere?</dt><dd>No. The list is a file this page loads, and the match runs in your browser.</dd></div>
+        <div><dt>Which list does the demo use?</dt><dd>A fixed copy of the digital currency addresses on OFAC's SDN list, published 10/21/2026 and downloaded on 2026-10-27. The app shows its source and fingerprints.</dd></div>
+        <div><dt>Does ALLOW mean an address is safe?</dt><dd>No. It means that exact address is not on that copy of the list. Tollgate does no name matching and uses no other lists.</dd></div>
+        <div><dt>Does Tollgate freeze or move funds?</dt><dd>No. Your system acts on the decision.</dd></div>
+        <div><dt>Who signed the receipts I make in the demo?</dt><dd>A public demo key that anyone can use. A deployment signs with your own key.</dd></div>
+        <div><dt>What does a passing check prove?</dt><dd>That the receipts are unchanged since they were signed and link up in order. It does not re-run the screening or show the list was complete. Without a seal, the key holder could rewrite the records.</dd></div>
+        <div><dt>How much does it cost?</dt><dd>Talk to us. There is nothing to buy on this site. <a href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20pricing">Ask about pricing</a>.</dd></div>
+        <div><dt>Can I sign in?</dt><dd>There are no accounts on this site. Accounts come with a deployment. <a href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request%3A%20accounts&body=I%27d%20like%20to%20talk%20about%20a%20deployment%20with%20accounts.%0A">Request a walkthrough</a>.</dd></div>
+      </dl>
+    </div>
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html">Contact</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

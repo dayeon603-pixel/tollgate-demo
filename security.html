@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Security · Tollgate</title>
+  <meta name="description" content="How to report a vulnerability in Tollgate, and what the demo does with data.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="./#product">Product</a>
+        <a href="./#how">How it works</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html#sign-in">Sign in</a>
+      </nav>
+      <a class="btn btn--ghost btn--sm nav__cta" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+    </div>
+  </header>
+  <main id="main" class="doc">
+    <div class="wrap doc__wrap">
+      <h1 class="doc__title">Security</h1>
+      <p class="doc__lead">If you find a vulnerability in this site or in Tollgate, please tell us privately so it can be fixed.</p>
+      <section class="doc__section" aria-labelledby="s-how">
+        <h2 id="s-how">How to report</h2>
+        <p>Email <a href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20security%20report&body=What%20I%20found%3A%0A%0ASteps%20to%20reproduce%3A%0A1.%0A2.%0A%0AWhere%20%28page%20or%20component%29%3A%0A%0AWhat%20someone%20could%20do%20with%20it%3A%0A">dayeon603@gmail.com</a> with the subject "Tollgate: security report". Include:</p>
+        <ul class="doc__list">
+          <li>What you found and where.</li>
+          <li>Steps to reproduce it.</li>
+          <li>What someone could do with it.</li>
+        </ul>
+        <p><a class="btn btn--primary" href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20security%20report&body=What%20I%20found%3A%0A%0ASteps%20to%20reproduce%3A%0A1.%0A2.%0A%0AWhere%20%28page%20or%20component%29%3A%0A%0AWhat%20someone%20could%20do%20with%20it%3A%0A">Report a vulnerability</a></p>
+      </section>
+      <section class="doc__section" aria-labelledby="s-ask">
+        <h2 id="s-ask">What we ask</h2>
+        <ul class="doc__list">
+          <li>Give us a reasonable time to fix the issue before you make it public.</li>
+          <li>Test only against your own data. Do not access, change or delete anyone else's.</li>
+          <li>Do not run denial-of-service tests, spam or social engineering.</li>
+          <li>Stop and tell us if you reach data that is not yours.</li>
+        </ul>
+      </section>
+      <section class="doc__section" aria-labelledby="s-scope">
+        <h2 id="s-scope">Scope</h2>
+        <p>In scope: this demo site and the Tollgate product. There is no bug bounty, so reports are not paid.</p>
+      </section>
+      <section class="doc__section" aria-labelledby="s-data">
+        <h2 id="s-data">What the demo does with data</h2>
+        <ul class="doc__list">
+          <li>Screening, signing and verifying all run in your browser. Addresses you type and files you check are not sent anywhere.</li>
+          <li>Receipts you make live in the open tab only and are gone when you close it, unless you download them.</li>
+          <li>No cookies, no analytics, no tracking scripts. The pages load only their own files.</li>
+          <li>The site is hosted on GitHub Pages. As the host, GitHub receives standard request data such as your IP address, under its own policies.</li>
+        </ul>
+      </section>
+      <section class="doc__section" aria-labelledby="s-limits">
+        <h2 id="s-limits">What the demo doesn't do</h2>
+        <ul class="doc__list">
+          <li>Receipts made here are signed with a public demo key that anyone can use, so they show the format and say nothing about who signed.</li>
+          <li>Unsealed records can be rewritten by whoever holds the signing key.</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html">Contact</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
