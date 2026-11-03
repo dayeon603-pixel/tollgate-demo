@@ -9,6 +9,7 @@
   <meta name="description" content="Talk to Tollgate, request a walkthrough or report a problem.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/site.css">
+  <script type="module" src="js/form-page.js"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -29,39 +30,70 @@
   </header>
   <main id="main" class="doc">
     <div class="wrap doc__wrap">
-      <h1 class="doc__title">Contact</h1>
-      <p class="doc__lead">Email is the only way to reach us. Each button opens a draft in your own email app; nothing is sent until you send it.</p>
-      <div class="contact-grid">
-        <section class="contact-card" aria-labelledby="c-talk">
-          <h2 id="c-talk">Talk to us</h2>
-          <p>Questions about Tollgate, a deployment, or how receipts would fit your screening.</p>
-          <a class="btn btn--primary" href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20hello">Talk to us</a>
-        </section>
-        <section class="contact-card" aria-labelledby="c-walk">
-          <h2 id="c-walk">Request a walkthrough</h2>
-          <p>A short live run-through of screening, receipts and offline checking.</p>
-          <a class="btn btn--ghost" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
-        </section>
-        <section class="contact-card" aria-labelledby="c-report">
-          <h2 id="c-report">Report a problem</h2>
-          <p>Something broken or confusing on this site. The draft asks for the steps, your browser and a screenshot.</p>
-          <a class="btn btn--ghost" href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20problem%20report&body=What%20I%20did%20%28steps%29%3A%0A1.%0A2.%0A%0AWhat%20I%20expected%3A%0A%0AWhat%20happened%20instead%3A%0A%0ABrowser%20and%20version%3A%0ADevice%20and%20operating%20system%3A%0A%0APlease%20attach%20a%20screenshot%20if%20you%20can.%0A">Report a problem</a>
-        </section>
+      <h1 class="doc__title">Talk to us</h1>
+      <p class="doc__lead">Tell us what you need. Sending opens a prefilled email in your own email app, addressed to dayeon603@gmail.com. Nothing is sent until you press send there.</p>
+      <div class="form-layout">
+        <form class="form" id="contact-form" novalidate aria-describedby="contact-note">
+          <div class="form__row">
+            <div class="form__field">
+              <label for="cf-name">Name</label>
+              <input id="cf-name" name="name" type="text" autocomplete="name" maxlength="100" aria-describedby="cf-name-error" required>
+              <p class="form__error" id="cf-name-error"></p>
+            </div>
+            <div class="form__field">
+              <label for="cf-email">Email</label>
+              <input id="cf-email" name="email" type="email" autocomplete="email" maxlength="254" aria-describedby="cf-email-error" required>
+              <p class="form__error" id="cf-email-error"></p>
+            </div>
+          </div>
+          <div class="form__row">
+            <div class="form__field">
+              <label for="cf-company">Company <span class="form__opt">optional</span></label>
+              <input id="cf-company" name="company" type="text" autocomplete="organization" maxlength="120" aria-describedby="cf-company-error">
+              <p class="form__error" id="cf-company-error"></p>
+            </div>
+            <div class="form__field">
+              <label for="cf-topic">Topic</label>
+              <select id="cf-topic" name="topic" aria-describedby="cf-topic-error" required>
+                <option value="">Choose a topic</option>
+                <option value="walkthrough">Walkthrough</option>
+                <option value="partnership">Partnership</option>
+                <option value="press">Press</option>
+                <option value="other">Other</option>
+              </select>
+              <p class="form__error" id="cf-topic-error"></p>
+            </div>
+          </div>
+          <div class="form__field">
+            <label for="cf-message">Message</label>
+            <textarea id="cf-message" name="message" rows="6" maxlength="2000" aria-describedby="cf-message-error cf-message-count" required></textarea>
+            <div class="form__under"><p class="form__error" id="cf-message-error"></p><p class="form__count" id="cf-message-count" aria-live="off">0 / 2,000</p></div>
+          </div>
+          <p class="form__note" id="contact-note">We use your details only to reply.</p>
+          <div class="form__actions"><button type="submit" class="btn btn--primary">Send message</button></div>
+          <div class="form__summary" id="contact-summary" role="alert" tabindex="-1" hidden></div>
+          <div class="form__done" id="contact-done" role="status" tabindex="-1" hidden></div>
+        </form>
+        <aside class="form-side">
+          <section class="side-block" aria-labelledby="c-report">
+            <h2 id="c-report">Report a problem</h2>
+            <p>Something broken or confusing on this site.</p>
+            <a class="btn btn--ghost btn--sm" href="report.html">Report a problem</a>
+          </section>
+          <section class="side-block" id="pricing" aria-labelledby="c-pricing">
+            <h2 id="c-pricing">Pricing</h2>
+            <p>Talk to us. There is nothing to buy on this site.</p>
+          </section>
+          <section class="side-block" id="sign-in" aria-labelledby="c-signin">
+            <h2 id="c-signin">Sign in</h2>
+            <p>There are no accounts on this site. Accounts come with a deployment of Tollgate. Choose "Walkthrough" above to set one up.</p>
+          </section>
+          <section class="side-block" aria-labelledby="c-sec">
+            <h2 id="c-sec">Security issues</h2>
+            <p>Please follow the steps on the <a href="security.html">Security page</a>.</p>
+          </section>
+        </aside>
       </div>
-      <section class="doc__section" id="pricing" aria-labelledby="c-pricing">
-        <h2 id="c-pricing">Pricing</h2>
-        <p>Talk to us. There is nothing to buy on this site.</p>
-        <p><a href="mailto:dayeon603@gmail.com?subject=Tollgate%3A%20pricing">Ask about pricing</a></p>
-      </section>
-      <section class="doc__section" id="sign-in" aria-labelledby="c-signin">
-        <h2 id="c-signin">Sign in</h2>
-        <p>There are no accounts on this site. Accounts come with a deployment of Tollgate. To set one up, request a walkthrough.</p>
-        <p><a class="btn btn--ghost" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request%3A%20accounts&body=I%27d%20like%20to%20talk%20about%20a%20deployment%20with%20accounts.%0A">Request a walkthrough</a></p>
-      </section>
-      <section class="doc__section" aria-labelledby="c-sec">
-        <h2 id="c-sec">Security issues</h2>
-        <p>Please follow the steps on the <a href="security.html">Security page</a>.</p>
-      </section>
     </div>
   </main>
   <footer class="foot">
@@ -75,6 +107,7 @@
         <a href="./#product">Product</a>
         <a href="app.html">Try it</a>
         <a href="contact.html">Contact</a>
+        <a href="report.html">Report a problem</a>
         <a href="faq.html">FAQ</a>
         <a href="security.html">Security</a>
         <a href="privacy.html">Privacy</a>

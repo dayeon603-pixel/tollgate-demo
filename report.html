@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Report a problem · Tollgate</title>
+  <meta name="description" content="Report a problem with the Tollgate site.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+  <script type="module" src="js/form-page.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="./#product">Product</a>
+        <a href="./#how">How it works</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html#sign-in">Sign in</a>
+      </nav>
+      <a class="btn btn--ghost btn--sm nav__cta" href="mailto:dayeon603@gmail.com?subject=Tollgate%20walkthrough%20request">Request a walkthrough</a>
+    </div>
+  </header>
+  <main id="main" class="doc">
+    <div class="wrap doc__wrap">
+      <h1 class="doc__title">Report a problem</h1>
+      <p class="doc__lead">Tell us what went wrong. Sending opens a prefilled email in your own email app. You will see everything it includes first, and nothing is sent until you press send there.</p>
+      <form class="form" id="report-form" novalidate>
+        <div class="form__field">
+          <label for="rf-happened">What happened?</label>
+          <textarea id="rf-happened" name="happened" rows="4" maxlength="2000" aria-describedby="rf-happened-error" required></textarea>
+          <p class="form__error" id="rf-happened-error"></p>
+        </div>
+        <div class="form__field">
+          <label for="rf-steps">Steps to get there <span class="form__opt">optional</span></label>
+          <textarea id="rf-steps" name="steps" rows="3" maxlength="2000" placeholder="1. Opened Try it&#10;2. Pressed Verify chain" aria-describedby="rf-steps-error"></textarea>
+          <p class="form__error" id="rf-steps-error"></p>
+        </div>
+        <div class="form__field">
+          <label for="rf-expected">What did you expect? <span class="form__opt">optional</span></label>
+          <textarea id="rf-expected" name="expected" rows="2" maxlength="2000" aria-describedby="rf-expected-error"></textarea>
+          <p class="form__error" id="rf-expected-error"></p>
+        </div>
+        <div class="form__field form__field--half">
+          <label for="rf-email">Your email <span class="form__opt">optional, if you'd like a reply</span></label>
+          <input id="rf-email" name="email" type="email" autocomplete="email" maxlength="254" aria-describedby="rf-email-error">
+          <p class="form__error" id="rf-email-error"></p>
+        </div>
+        <section class="attach" aria-labelledby="rf-attach-title">
+          <h2 class="attach__title" id="rf-attach-title">Added automatically</h2>
+          <p class="attach__note">These details go into the email with your answers. A screenshot helps too: attach it in your email app.</p>
+          <dl class="attach__list" id="rf-attach"></dl>
+        </section>
+        <details class="preview">
+          <summary>See the exact email</summary>
+          <pre class="preview__text" id="rf-preview"></pre>
+        </details>
+        <div class="form__actions"><button type="submit" class="btn btn--primary">Open email with this report</button></div>
+        <div class="form__summary" id="report-summary" role="alert" tabindex="-1" hidden></div>
+        <div class="form__done" id="report-done" role="status" tabindex="-1" hidden></div>
+      </form>
+    </div>
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html">Contact</a>
+        <a href="report.html">Report a problem</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

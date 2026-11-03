@@ -6,11 +6,11 @@
  */
 import { SAMPLE_PUBLIC_KEY, ed25519Available, signedReason, verifyText } from './verifier.js';
 import { initStart } from './start.js';
+import { contextFragment } from './forms.js';
 
 const SAMPLE_URL = 'data/sample_receipts.json';
 const SAMPLE_LIST_DATE = 'Aug 2023';
 const BASE_LABELS = { sample: 'Sample', yours: 'Your receipts', file: 'Opened file' };
-const REPORT_TO = 'dayeon603@gmail.com';
 const GENESIS = '0'.repeat(64);
 const ROUTES = { start: 'Get started', receipts: 'Receipts', raw: 'Raw receipts', about: 'How it runs' };
 const OVERLAY_PANEL_QUERY = '(max-width: 1199px)';
@@ -1145,42 +1145,26 @@ function bindShell() {
 }
 
 /**
- * A problem report the person sends themselves: what the page is showing and which browser, put
- * into an email draft. Nothing is sent automatically, and receipt contents are left out.
+ * Link to the problem-report form, carrying what this page is showing in the URL fragment, which
+ * the browser never sends to a server. The form shows all of it before any email opens.
  */
-function problemReport() {
+function problemReportHref() {
   const outcome = state.outcome;
-  const lines = [
-    'What I did (steps):',
-    '1.',
-    '2.',
-    '',
-    'What I expected:',
-    '',
-    'What happened instead:',
-    '',
-    'Please attach a screenshot if you can.',
-    '',
-    '--- Filled in by the page. Edit or delete anything you like. ---',
-    `Page: ${location.origin}${location.pathname}#${state.route}`,
-    `Shown: ${resultBox.textContent.trim().slice(0, 400) || 'nothing'}`,
-    `Result: ${outcome ? outcome.kind : state.busy ? 'checking' : 'not run'}`,
-    outcome?.kind === 'fail' ? `Failed checks: ${outcome.receipts.filter((r) => r.failed.length).map((r) => `#${r.index} ${r.failed.map(({ id }) => id).join('/')}`).join('; ') || outcome.fileProblems.join('; ')}` : null,
-    outcome?.kind === 'unreadable' ? `Problems: ${outcome.problems.join('; ')}` : null,
-    `File: ${BASE_LABELS[state.baseKind]}${fileBox.value === state.baseText ? ', unchanged' : ', modified'}`,
-    `Page state: ${state.phase}${state.noCrypto ? ', no Ed25519 in this browser' : ''}`,
-    `Browser: ${navigator.userAgent}`,
-    `Language: ${navigator.language}`,
-    `Window: ${window.innerWidth}x${window.innerHeight}`,
-    `Time: ${new Date().toISOString()}`,
-  ].filter((line) => line !== null);
-  return `mailto:${REPORT_TO}?subject=${encodeURIComponent('Tollgate: problem report')}&body=${encodeURIComponent(lines.join('\n'))}`;
+  const failed = outcome?.kind === 'fail'
+    ? outcome.receipts.filter((r) => r.failed.length).map((r) => `#${r.index} ${r.failed.map(({ id }) => id).join('/')}`).join('; ') || outcome.fileProblems.join('; ')
+    : '';
+  const context = {
+    page: `${location.pathname.split('/').pop() || 'app.html'}#${state.route}, ${BASE_LABELS[state.baseKind].toLowerCase()}${fileBox.value === state.baseText ? '' : ', modified'}`,
+    error: Array.from(resultBox.children).filter((node) => node.tagName !== 'BUTTON').map((node) => node.textContent.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' '),
+    result: outcome ? `${outcome.kind}${failed ? `: ${failed}` : ''}` : state.phase === 'ready' ? 'not run' : state.phase,
+  };
+  return `report.html${contextFragment(context)}`;
 }
 
 async function start() {
   bindShell();
   const report = $('tg-report');
-  const refreshReport = () => { report.href = problemReport(); };
+  const refreshReport = () => { report.href = problemReportHref(); };
   ['click', 'focus', 'pointerenter'].forEach((type) => report.addEventListener(type, refreshReport));
   renderAll();
   try {
