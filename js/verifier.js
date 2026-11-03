@@ -168,6 +168,10 @@ async function importSampleKey() {
         return null;
     }
 }
+/** True when this browser can run the signature check at all. */
+export async function ed25519Available() {
+    return (await importSampleKey()) !== null;
+}
 function readFile(text) {
     if (text.length > MAX_TEXT_LENGTH)
         return { file: null, problems: ['This file is too long for this page to check.'] };
@@ -191,17 +195,17 @@ function readFile(text) {
     const problems = [];
     parsed.receipts.forEach((receipt, i) => {
         if (!isObject(receipt)) {
-            problems.push(`Receipt ${i + 1} is not a receipt.`);
+            problems.push(`Receipt #${i} is not a receipt.`);
             return;
         }
         for (const key of RECEIPT_KEYS) {
             if (!(key in receipt))
-                problems.push(`Receipt ${i + 1} is missing its "${key}" field.`);
+                problems.push(`Receipt #${i} is missing its "${key}" field.`);
         }
         if (!isObject(receipt.action))
-            problems.push(`Receipt ${i + 1} has no payment details.`);
+            problems.push(`Receipt #${i} has no payment details.`);
         if (!isObject(receipt.verdict))
-            problems.push(`Receipt ${i + 1} has no decision.`);
+            problems.push(`Receipt #${i} has no decision.`);
     });
     return problems.length ? { file: null, problems } : { file: parsed, problems: [] };
 }
@@ -209,7 +213,8 @@ function readFile(text) {
  * Runs every check on the text of a receipts file.
  *
  * Args: text, the file exactly as shown on the page.
- * Returns: an Outcome. "pass" only when every receipt passes every check.
+ * Returns: an Outcome. "pass" only when every receipt passes every check. Each receipt result also
+ * carries every check's verdict and measured duration, plus the values this run computed.
  * Never reports "pass" for a check it could not run; a browser without Ed25519 gets "unsupported".
  */
 export async function verifyText(text) {
@@ -230,31 +235,45 @@ export async function verifyText(text) {
         const action = receipt.action;
         const verdict = receipt.verdict;
         const { signature, ...signedPart } = verdict;
-        const failed = [];
-        let signatureOk = false;
-        if (typeof signature === 'string' && /^[0-9a-f]{128}$/.test(signature)) {
-            signatureOk = await crypto.subtle.verify({ name: 'Ed25519' }, key, hexToBytes(signature), new TextEncoder().encode(canon(signedPart)));
-        }
-        if (!signatureOk)
-            failed.push('signature');
-        if (verdict.authorizer_id !== SAMPLE_PUBLIC_KEY)
-            failed.push('signer');
-        if (verdict.action_digest !== (await sha256Hex(canon(action))))
-            failed.push('binding');
-        const computedHash = await sha256Hex(canon({ seq: receipt.seq, prev_hash: receipt.prev_hash, action, verdict }));
-        if (computedHash !== receipt.this_hash)
-            failed.push('hash');
-        if (receipt.prev_hash !== previousHash || receipt.seq !== index)
-            failed.push('chain');
+        const checks = [];
+        /** Runs one check and records its verdict and how long this real call took. */
+        const timed = async (id, runCheck) => {
+            const startedAt = performance.now();
+            const ok = await runCheck();
+            checks.push({ id, ok, ms: performance.now() - startedAt });
+        };
+        await timed('signature', async () => {
+            if (typeof signature !== 'string' || !/^[0-9a-f]{128}$/.test(signature))
+                return false;
+            return crypto.subtle.verify({ name: 'Ed25519' }, key, hexToBytes(signature), new TextEncoder().encode(canon(signedPart)));
+        });
+        await timed('signer', () => verdict.authorizer_id === SAMPLE_PUBLIC_KEY);
+        let computedDigest = '';
+        await timed('binding', async () => {
+            computedDigest = await sha256Hex(canon(action));
+            return verdict.action_digest === computedDigest;
+        });
+        let computedHash = '';
+        await timed('hash', async () => {
+            computedHash = await sha256Hex(canon({ seq: receipt.seq, prev_hash: receipt.prev_hash, action, verdict }));
+            return computedHash === receipt.this_hash;
+        });
+        const expectedPrev = previousHash;
+        await timed('chain', () => receipt.prev_hash === expectedPrev && receipt.seq === index);
         previousHash = computedHash;
         const actionId = typeof action.action_id === 'string' ? action.action_id : '';
-        const labelsOk = receipt.receipt_id === `rcpt:${actionId.replace(/^act:/, '')}` &&
+        await timed('labels', () => receipt.receipt_id === `rcpt:${actionId.replace(/^act:/, '')}` &&
             file.list_snapshot === signedReason(verdict, 'list_snapshot') &&
             file.rulebook_version === signedReason(verdict, 'rulebook_version') &&
-            Object.keys(receipt).every((name) => RECEIPT_KEYS.includes(name));
-        if (!labelsOk)
-            failed.push('labels');
-        results.push({ index, failed: failed.map((id) => ({ id, message: MESSAGES[id] })) });
+            Object.keys(receipt).every((name) => RECEIPT_KEYS.includes(name)));
+        results.push({
+            index,
+            failed: checks.filter((check) => !check.ok).map(({ id }) => ({ id, message: MESSAGES[id] })),
+            checks,
+            computedHash,
+            computedDigest,
+            expectedPrev,
+        });
     }
     const allPass = fileProblems.length === 0 && results.every((result) => result.failed.length === 0);
     return allPass ? { kind: 'pass', receipts: results } : { kind: 'fail', receipts: results, fileProblems };
