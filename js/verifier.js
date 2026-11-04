@@ -17,6 +17,19 @@ const SAFE_INTEGER_BOUND = BigInt('9007199254740991');
 const NUMBER_TOKEN = /-?\d+(\.\d+)?([eE][+-]?\d+)?/;
 const RECEIPT_KEYS = ['action', 'prev_hash', 'receipt_id', 'seq', 'this_hash', 'verdict'];
 const HEADER_KEYS = ['list_snapshot', 'receipts', 'rulebook_version'];
+/** Label forms this page writes: sample ids d1, d2, and the visitor's own u1, u2. */
+const DEMO_RECEIPT_ID = /^rcpt:[du]\d+$/;
+const DEMO_RULEBOOK_PREFIXES = ['SDN-MIRROR-', 'SDN-OFAC-'];
+/** A zip archive starts with these bytes, read as text. */
+const ZIP_MAGIC = 'PK\u0003\u0004';
+/**
+ * Shown, with no verdict, for input this page was not built to check. Saying FAIL to an honest
+ * package from a real workspace would be a false verdict, and so would PASS.
+ */
+export const FOREIGN_MESSAGES = {
+    workspace: 'This looks like a package from a Tollgate workspace. This page only checks receipts made on this page, with the public demo key. Use the checker included in the kit to verify it.',
+    number: "This file writes a number in a format this page can't check here, such as 6.0. This page only checks receipts made on this page, with the public demo key. Use the checker included in the kit to verify it.",
+};
 const MESSAGES = {
     signature: 'The signature does not match. Something inside the signed decision changed: its list, its time, its reasons, or the signature itself.',
     signer: 'This receipt names a different signer from the sample key.',
@@ -62,7 +75,7 @@ export function canon(value) {
  * Numbers two verifiers would not read the same way. This has to scan the raw text, because
  * JSON.parse has already collapsed the distinction by the time a parsed value exists.
  */
-function findUnsafeNumbers(raw) {
+function numberTokens(raw) {
     const found = [];
     let inString = false;
     let i = 0;
@@ -86,24 +99,36 @@ function findUnsafeNumbers(raw) {
         if (c === '-' || (c >= '0' && c <= '9')) {
             const match = NUMBER_TOKEN.exec(raw.slice(i, i + 400));
             if (match && match.index === 0) {
-                const token = match[0];
-                if (/^-?\d+$/.test(token)) {
-                    const big = BigInt(token);
-                    if (big > SAFE_INTEGER_BOUND || big < -SAFE_INTEGER_BOUND)
-                        found.push(token);
-                }
-                else {
-                    const n = Number(token);
-                    if (!Number.isFinite(n) || Math.abs(n) > Number.MAX_SAFE_INTEGER || Object.is(n, -0))
-                        found.push(token);
-                }
-                i += token.length;
+                found.push(match[0]);
+                i += match[0].length;
                 continue;
             }
         }
         i++;
     }
     return found;
+}
+function isUnsafeNumber(token) {
+    if (/^-?\d+$/.test(token)) {
+        const big = BigInt(token);
+        return big > SAFE_INTEGER_BOUND || big < -SAFE_INTEGER_BOUND;
+    }
+    const n = Number(token);
+    return !Number.isFinite(n) || Math.abs(n) > Number.MAX_SAFE_INTEGER || Object.is(n, -0);
+}
+function findUnsafeNumbers(raw) {
+    return numberTokens(raw).filter(isUnsafeNumber);
+}
+/**
+ * A number written with a point or an exponent that this page would canonicalise differently from
+ * the signer: an integral float such as 6.0 (signed as "6.0", read here as 6), or a value Python
+ * writes with an exponent and JavaScript does not, such as 1e-05.
+ */
+function isFloatFormat(token) {
+    if (/^-?\d+$/.test(token) || isUnsafeNumber(token))
+        return false;
+    const n = Number(token);
+    return Number.isInteger(n) || /[eE]/.test(token) || Math.abs(n) < 1e-4;
 }
 function hasUnpairedSurrogate(text) {
     for (let i = 0; i < text.length; i++) {
@@ -172,9 +197,52 @@ async function importSampleKey() {
 export async function ed25519Available() {
     return (await importSampleKey()) !== null;
 }
+/** True for a receipt from a kit package that is held by hash only, with no decision in it. */
+function isStub(receipt) {
+    return isObject(receipt) && !('action' in receipt) && !('verdict' in receipt) && 'this_hash' in receipt;
+}
+/**
+ * Spots input this page was not made to check, before any check runs, so it gets no verdict.
+ *
+ * A file counts as from a workspace when it is too long, is a zip archive, has the shape of a kit
+ * package (receipts held by hash only, or its receipts list one level down), names a rulebook
+ * label this page never writes, has no receipt signed by the demo key, or has no receipt id in this
+ * page's form. A demo file with one edited field still has the demo key and ids elsewhere, so it
+ * still goes through every check and fails as before. A single receipt edited to name another key
+ * gets this neutral result too, which is never a pass.
+ *
+ * Returns: "workspace", "number", or null when the file is for this page to check.
+ */
+function foreignReason(text) {
+    if (text.length > MAX_TEXT_LENGTH || text.startsWith(ZIP_MAGIC))
+        return 'workspace';
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    }
+    catch {
+        return null;
+    }
+    if (!isObject(parsed))
+        return null;
+    const receipts = parsed.receipts;
+    if (!Array.isArray(receipts))
+        return Object.values(parsed).some((value) => isObject(value) && Array.isArray(value.receipts)) ? 'workspace' : null;
+    if (receipts.length === 0)
+        return null;
+    if (receipts.some(isStub))
+        return 'workspace';
+    if (typeof parsed.rulebook_version === 'string' && !DEMO_RULEBOOK_PREFIXES.some((prefix) => parsed.rulebook_version.startsWith(prefix)))
+        return 'workspace';
+    const signedByDemo = receipts.some((r) => isObject(r) && isObject(r.verdict) && r.verdict.authorizer_id === SAMPLE_PUBLIC_KEY);
+    const demoId = receipts.some((r) => isObject(r) && typeof r.receipt_id === 'string' && DEMO_RECEIPT_ID.test(r.receipt_id));
+    if (!signedByDemo || !demoId)
+        return 'workspace';
+    if (numberTokens(text).some(isFloatFormat))
+        return 'number';
+    return null;
+}
 function readFile(text) {
-    if (text.length > MAX_TEXT_LENGTH)
-        return { file: null, problems: ['This file is too long for this page to check.'] };
     const unsafe = findUnsafeNumbers(text);
     if (unsafe.length) {
         return { file: null, problems: [`The number ${unsafe[0].slice(0, 40)} is too large or too precise to check reliably.`] };
@@ -213,11 +281,15 @@ function readFile(text) {
  * Runs every check on the text of a receipts file.
  *
  * Args: text, the file exactly as shown on the page.
- * Returns: an Outcome. "pass" only when every receipt passes every check. Each receipt result also
+ * Returns: an Outcome. "foreign" with a message and no verdict for a file this page was not made to
+ * check (see foreignReason). "pass" only when every receipt passes every check. Each receipt result also
  * carries every check's verdict and measured duration, plus the values this run computed.
  * Never reports "pass" for a check it could not run; a browser without Ed25519 gets "unsupported".
  */
 export async function verifyText(text) {
+    const reason = foreignReason(text);
+    if (reason)
+        return { kind: 'foreign', reason, message: FOREIGN_MESSAGES[reason] };
     const { file, problems } = readFile(text);
     if (!file)
         return { kind: 'unreadable', problems };

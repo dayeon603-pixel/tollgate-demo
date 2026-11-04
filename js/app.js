@@ -371,6 +371,7 @@ function statusChip() {
     return chip(`Failed ${failing} of ${outcome.receipts.length}`, 'bad', 'cross');
   }
   if (outcome.kind === 'unreadable') return chip('Failed: unreadable', 'bad', 'cross');
+  if (outcome.kind === 'foreign') return chip('Not checked here', 'neutral', 'dash');
   return chip('Nothing verified', 'warn', 'alert');
 }
 
@@ -431,6 +432,10 @@ function renderBanner() {
     nodes.push(el('p', { cls: 'banner__lead', kids: [icon('cross'), el('span', { text: 'Verification failed.' })] }), el('p', { cls: 'banner__detail', text: detail }));
     nodes.push(seeChecks());
     if (state.note) nodes.push(el('p', { cls: 'banner__note', text: state.note }));
+  } else if (outcome.kind === 'foreign') {
+    // No verdict and no partial checks: this page was not made to check this file.
+    bannerState = 'neutral';
+    nodes.push(el('p', { cls: 'banner__lead', text: outcome.message }));
   } else if (outcome.kind === 'unreadable') {
     bannerState = 'fail';
     nodes.push(

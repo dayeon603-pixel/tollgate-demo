@@ -177,6 +177,29 @@ def main(base: str, shots: Path) -> int:
         page.set_input_files("#st-file", str(junk_path))
         page.wait_for_selector("#st-check .banner[data-state='fail']")
         expect("cannot be read" in page.locator("#st-check").inner_text(), "start: non-receipt upload is refused")
+        # Files this page was not made to check: neutral, with no verdict and no partial checks.
+        foreign_note = "This page only checks receipts made on this page"
+        own_key = json.loads(pkg_path.read_text())
+        for r in own_key["receipts"]:
+            r["verdict"]["authorizer_id"] = "15646f703d9177aa60f70829f9d929b6729729b138cc3dfff98b8f2c36be94a3"
+        kit_label = json.loads(pkg_path.read_text())
+        kit_label["rulebook_version"] = "OFAC-SDN-9f2503ec4c17"
+        pkg_text = pkg_path.read_text()
+        cases = {
+            "workspace_key.json": json.dumps(own_key),
+            "workspace_label.json": json.dumps(kit_label),
+            "integral_float.json": pkg_text.replace('"amount_usd": 1500', '"amount_usd": 1500.0').replace('"amount_usd":1500', '"amount_usd":1500.0'),
+            "oversized.json": pkg_text + " " * 250_000,
+        }
+        expect(cases["integral_float.json"] != pkg_text, "start: integral float case differs from the package")
+        for name, text in cases.items():
+            path = shots / name
+            path.write_text(text)
+            page.set_input_files("#st-file", str(path))
+            page.wait_for_selector("#st-check .banner[data-state='neutral']", timeout=5000)
+            out = page.locator("#st-check").inner_text()
+            expect(foreign_note in out and "Verified" not in out and "failed" not in out and page.locator("#st-check .linkbtn").count() == 0, f"start: {name} is neutral, no verdict")
+        expect("Checks receipts made on this page." in page.locator("#st-drop").inner_text(), "start: drop zone says what it checks")
         page.screenshot(path=str(shots / "app_start_flow_desktop.png"), full_page=True)
         page.click("#st-open")
         expect(banner(page) == "pass", "start: Verify my receipts passes in the verifier")
@@ -194,6 +217,12 @@ def main(base: str, shots: Path) -> int:
         page.click("#tg-use-sample")
         page.click("#tg-verify")
         expect(banner(page) == "pass" and page.locator("#tg-meta-file").inner_text() == "Sample, unchanged", "verifier: back to sample, passes")
+        page.evaluate("t => { const f = document.getElementById('tg-file'); f.value = t; f.dispatchEvent(new Event('input', { bubbles: true })); }", json.dumps(own_key))
+        page.click("#tg-verify")
+        expect(banner(page) == "neutral" and foreign_note in page.locator("#tg-result").inner_text(), "verifier: a workspace package is neutral, no verdict")
+        page.click("#tg-restore")
+        page.click("#tg-verify")
+        expect(banner(page) == "pass", "verifier: sample passes again")
 
         # 6. Report a problem builds a draft with error and browser details.
         page.select_option("#tg-scenario", "amount")

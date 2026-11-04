@@ -3,7 +3,7 @@
  * workbench.js and verifier.js; this file only reads the form and draws results. Every value shown
  * goes through textContent. Receipts made here live in this tab's memory only.
  */
-import { verifyText } from './verifier.js';
+import { FOREIGN_MESSAGES, verifyText } from './verifier.js';
 import {
   LIST_URL,
   appendReceipt,
@@ -256,7 +256,7 @@ export async function initStart({ openInVerifier }) {
     const check = async (file) => {
       if (!file) return;
       if (file.size > MAX_UPLOAD_BYTES) {
-        show('fail', 'Not checked. This file is too large to be a receipt package.', []);
+        show('neutral', FOREIGN_MESSAGES.workspace, []);
         return;
       }
       show('loading', `Checking ${file.name} in this browser.`, []);
@@ -283,6 +283,8 @@ export async function initStart({ openInVerifier }) {
           ...failing.slice(0, 4).map((r) => `Receipt #${r.index}: ${r.failed.map(({ message }) => message).join(' ')}`),
         ];
         show('fail', 'Verification failed.', lines, text);
+      } else if (outcome.kind === 'foreign') {
+        show('neutral', outcome.message, []);
       } else if (outcome.kind === 'unreadable') {
         show('fail', 'Verification failed. This file cannot be read as receipts.', outcome.problems.slice(0, 3));
       } else if (outcome.kind === 'unsupported') {

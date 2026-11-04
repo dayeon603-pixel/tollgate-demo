@@ -118,3 +118,93 @@ test('a non-receipt upload is refused, never passed', async () => {
   assert.equal((await verifyText(listText)).kind, 'unreadable');
   assert.equal((await verifyText('{"receipts":[]}')).kind, 'unreadable');
 });
+
+/* Files this page was not made to check get a neutral result: never "pass", never "fail". */
+
+import { canon, FOREIGN_MESSAGES } from '../js/verifier.js';
+
+async function sha256(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Buffer.from(digest).toString('hex');
+}
+
+/** The sample re-signed honestly with a fresh key, as a real workspace would sign its own chain. */
+async function resignedWithOwnKey(mutate = () => {}) {
+  const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const pub = Buffer.from(await crypto.subtle.exportKey('raw', pair.publicKey)).toString('hex');
+  const file = JSON.parse(sampleText);
+  mutate(file);
+  let prev = '0'.repeat(64);
+  for (const receipt of file.receipts) {
+    const { signature, ...signed } = receipt.verdict;
+    signed.authorizer_id = pub;
+    signed.action_digest = await sha256(canon(receipt.action));
+    const sig = await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, new TextEncoder().encode(canon(signed)));
+    receipt.verdict = { ...signed, signature: Buffer.from(sig).toString('hex') };
+    receipt.prev_hash = prev;
+    receipt.this_hash = await sha256(canon({ seq: receipt.seq, prev_hash: prev, action: receipt.action, verdict: receipt.verdict }));
+    prev = receipt.this_hash;
+  }
+  return file;
+}
+
+function assertNeutral(outcome, reason, name) {
+  assert.equal(outcome.kind, 'foreign', name);
+  assert.equal(outcome.reason, reason, name);
+  assert.equal(outcome.message, FOREIGN_MESSAGES[reason], name);
+  assert.equal('receipts' in outcome, false, `${name}: no partial checks`);
+}
+
+test('a real-format package signed with its own key is neutral, never fail or pass', async () => {
+  const file = await resignedWithOwnKey();
+  assertNeutral(await verifyText(JSON.stringify(file, null, 2)), 'workspace', 'own key');
+});
+
+test('kit labels, ids and structure are neutral', async () => {
+  const kitLabels = await resignedWithOwnKey((f) => {
+    f.rulebook_version = 'OFAC-SDN-9f2503ec4c17';
+    f.receipts.forEach((r, i) => {
+      const hex = (i + 1).toString(16).padStart(16, '0');
+      r.receipt_id = `rcpt:${hex}`;
+      r.action.action_id = `act:${hex}`;
+      r.verdict.action_id = `act:${hex}`;
+    });
+  });
+  assertNeutral(await verifyText(JSON.stringify(kitLabels)), 'workspace', 'kit labels and key');
+  const label = JSON.parse(sampleText);
+  label.rulebook_version = 'OFAC-SDN-9f2503ec4c17';
+  assertNeutral(await verifyText(JSON.stringify(label)), 'workspace', 'non-demo rulebook label');
+  const ids = JSON.parse(sampleText);
+  ids.receipts.forEach((r, i) => { r.receipt_id = `rcpt:${(i + 1).toString(16).padStart(16, '0')}`; });
+  assertNeutral(await verifyText(JSON.stringify(ids)), 'workspace', 'non-demo id form');
+  const stub = JSON.parse(sampleText);
+  stub.receipts[1] = { seq: 1, prev_hash: stub.receipts[1].prev_hash, this_hash: stub.receipts[1].this_hash };
+  assertNeutral(await verifyText(JSON.stringify(stub)), 'workspace', 'receipt held by hash only');
+  assertNeutral(await verifyText(JSON.stringify({ bundle: JSON.parse(sampleText) })), 'workspace', 'nested bundle');
+  assertNeutral(await verifyText('PK\u0003\u0004 zip bytes'), 'workspace', 'zip archive');
+});
+
+test('an integral float such as 6.0 is neutral, never fail or pass', async () => {
+  assert.match(sampleText, /"amount_usd": 1000,/);
+  assertNeutral(await verifyText(sampleText.replace('"amount_usd": 1000,', '"amount_usd": 1000.0,')), 'number', '1000.0');
+  assertNeutral(await verifyText(sampleText.replace('"amount_usd": 1000,', '"amount_usd": 1e3,')), 'number', '1e3');
+  const chain = await chainOf(listed);
+  const text = wb.packageText(chain).replace('"amount_usd":1000', '"amount_usd":6.0').replace('"amount_usd": 1000', '"amount_usd": 6.0');
+  assertNeutral(await verifyText(text), 'number', 'own receipt with 6.0');
+});
+
+test('an oversized file is neutral, never fail or pass', async () => {
+  assertNeutral(await verifyText(sampleText + ' '.repeat(200_001)), 'workspace', 'oversized');
+});
+
+test('demo files with one edited key or label still fail', async () => {
+  const signer = JSON.parse(sampleText);
+  signer.receipts[1].verdict.authorizer_id = 'f'.repeat(64);
+  assert.equal((await verifyText(JSON.stringify(signer))).kind, 'fail', 'one signer changed');
+  const id = JSON.parse(sampleText);
+  id.receipts[0].receipt_id = 'rcpt:0000000000000001';
+  assert.equal((await verifyText(JSON.stringify(id))).kind, 'fail', 'one id changed');
+  const own = await chainOf(listed, '0x000000000000000000000000000000000000c1ea');
+  own.receipts[0].verdict.authorizer_id = 'f'.repeat(64);
+  assert.equal((await verifyText(wb.packageText(own))).kind, 'fail', 'own chain, one signer changed');
+});

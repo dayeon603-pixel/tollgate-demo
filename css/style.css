@@ -125,6 +125,7 @@ body[data-route='about'] .toolbar, body[data-route='about'] .banner { display: n
 .banner__detail { color: var(--dim); }
 .banner__note { flex-basis: 100%; color: var(--dim); }
 .banner[data-state='idle'] .banner__lead, .banner[data-state='loading'] .banner__lead { color: var(--dim); font-weight: 500; }
+.banner[data-state='neutral'] .banner__lead { color: var(--ink); font-weight: 500; }
 .banner[data-state='pass'] { background: var(--good-bg); border-color: var(--good-line); }
 .banner[data-state='pass'] .banner__lead { color: var(--good); }
 .banner[data-state='fail'] { background: var(--bad-bg); border-color: var(--bad-line); }
