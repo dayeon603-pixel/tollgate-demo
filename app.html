@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
-  <title>Try the receipt check · Tollgate</title>
-  <meta name="description" content="Signed proof of which sanctions list you checked, and when.">
+  <title>Analyst workspace · Tollgate</title>
+  <meta name="description" content="Demo analyst workspace: alerts, cases, batch screening, list-update lookback and evidence packs, backed by signed receipts.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/workspace.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -20,9 +21,22 @@
         <span class="side__name">Tollgate</span>
       </a>
       <p class="demo-badge"><span class="demo-badge__dot" aria-hidden="true"></span>Demo: sample data</p>
-      <nav class="side__nav" aria-label="Main">
+      <nav class="side__nav" aria-label="Workspace">
+        <a class="navlink" href="#dashboard" data-route="dashboard"><span data-icon="grid"></span>Dashboard</a>
+        <a class="navlink" href="#alerts" data-route="alerts"><span data-icon="bell"></span>Alerts<span class="navbadge" id="ws-nav-alerts"></span></a>
+        <a class="navlink" href="#screening" data-route="screening"><span data-icon="scan"></span>Screening</a>
+        <a class="navlink" href="#monitoring" data-route="monitoring"><span data-icon="eye"></span>Monitoring</a>
+        <a class="navlink" href="#lists" data-route="lists"><span data-icon="layers"></span>Lists</a>
+        <a class="navlink" href="#explorer" data-route="explorer"><span data-icon="search"></span>Receipt explorer</a>
+        <a class="navlink" href="#evidence" data-route="evidence"><span data-icon="file"></span>Evidence packs</a>
+        <a class="navlink" href="#policy" data-route="policy"><span data-icon="sliders"></span>Policy and roles</a>
+        <a class="navlink" href="#activity" data-route="activity"><span data-icon="clock"></span>Activity log</a>
+        <a class="navlink" href="#api" data-route="api"><span data-icon="plug"></span>API examples</a>
+      </nav>
+      <p class="side__group" id="tools-label">Tools</p>
+      <nav class="side__nav side__nav--tools" aria-labelledby="tools-label">
         <a class="navlink" href="#start" data-route="start"><span data-icon="flag"></span>Get started</a>
-        <a class="navlink" href="#receipts" data-route="receipts"><span data-icon="list"></span>Receipts</a>
+        <a class="navlink" href="#receipts" data-route="receipts"><span data-icon="list"></span>Verify receipts</a>
         <a class="navlink" href="#raw" data-route="raw"><span data-icon="code"></span>Raw receipts</a>
         <a class="navlink" href="#about" data-route="about"><span data-icon="info"></span>How it runs</a>
         <button type="button" class="navlink" id="tg-limits-open"><span data-icon="scale"></span><span class="navlink__long">What this check does and doesn't prove</span><span class="navlink__short">Limits</span></button>
@@ -36,7 +50,7 @@
 
     <div class="app">
       <header class="top">
-        <h1 class="top__title" id="tg-title" tabindex="-1">Receipts</h1>
+        <h1 class="top__title" id="tg-title" tabindex="-1">Dashboard</h1>
         <dl class="top__meta">
           <div><dt>List version</dt><dd class="mono" id="tg-meta-version">Loading</dd></div>
           <div><dt>List date</dt><dd id="tg-meta-date" title="From the sample's description. This date is not a signed field.">Loading</dd></div>
@@ -49,6 +63,7 @@
       <div class="body" id="tg-body">
         <main class="work">
           <noscript><p class="noscript">The check runs in your browser, so it needs JavaScript turned on.</p></noscript>
+          <div class="wsbar" id="ws-bar" aria-label="Workspace controls"></div>
 
           <div class="toolbar" id="tg-toolbar">
             <button type="button" id="tg-verify" class="btn btn--primary" disabled><span data-icon="play"></span>Verify chain</button>
@@ -63,6 +78,17 @@
           </div>
 
           <div id="tg-result" class="banner" data-state="loading" role="status" aria-live="polite"></div>
+
+          <section class="view" data-view="dashboard" hidden><div class="wsview" id="ws-view-dashboard"></div></section>
+          <section class="view" data-view="alerts" hidden><div class="wsview" id="ws-view-alerts"></div></section>
+          <section class="view" data-view="screening" hidden><div class="wsview" id="ws-view-screening"></div></section>
+          <section class="view" data-view="monitoring" hidden><div class="wsview" id="ws-view-monitoring"></div></section>
+          <section class="view" data-view="lists" hidden><div class="wsview" id="ws-view-lists"></div></section>
+          <section class="view" data-view="explorer" hidden><div class="wsview" id="ws-view-explorer"></div></section>
+          <section class="view" data-view="evidence" hidden><div class="wsview" id="ws-view-evidence"></div></section>
+          <section class="view" data-view="policy" hidden><div class="wsview" id="ws-view-policy"></div></section>
+          <section class="view" data-view="activity" hidden><div class="wsview" id="ws-view-activity"></div></section>
+          <section class="view" data-view="api" hidden><div class="wsview" id="ws-view-api"></div></section>
 
           <section class="view" data-view="start" hidden>
             <p class="start__intro">Three steps. Screen an address against OFAC's list, get a signed receipt for the decision, then check the receipt. Everything runs in this browser and nothing is sent anywhere.</p>
@@ -214,6 +240,15 @@
       </div>
     </div>
   </div>
+
+  <dialog class="drawer ws-drawer" id="ws-drawer" aria-labelledby="ws-drawer-title">
+    <div class="drawer__head">
+      <button type="button" class="iconbtn" id="ws-drawer-back" aria-label="Back" hidden><span data-icon="back"></span></button>
+      <h2 id="ws-drawer-title">Detail</h2>
+      <button type="button" class="iconbtn" id="ws-drawer-close" aria-label="Close"><span data-icon="close"></span></button>
+    </div>
+    <div class="drawer__body" id="ws-drawer-body"></div>
+  </dialog>
 
   <dialog class="drawer" id="tg-limits" aria-labelledby="tg-limits-title">
     <div class="drawer__head">

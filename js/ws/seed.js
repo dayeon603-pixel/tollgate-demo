@@ -67,7 +67,7 @@ function lifecycle(alert, rand, users) {
       step(between(rand, 30, 300), { actor: users.c, action: 'reject_clear', note: 'Supporting document is missing. Please attach it and propose again.' });
     } else {
       step(between(rand, 30, 240), { actor: owner, action: 'propose_clear', note: holdNote });
-      step(between(rand, 30, 600), { actor: approver(), action: 'approve_clear' });
+      step(rand() < 0.3 ? between(rand, 600, 4000) : between(rand, 30, 600), { actor: approver(), action: 'approve_clear' });
     }
     return steps;
   }

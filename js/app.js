@@ -7,12 +7,14 @@
 import { SAMPLE_PUBLIC_KEY, ed25519Available, signedReason, verifyText } from './verifier.js';
 import { initStart } from './start.js';
 import { contextFragment } from './forms.js';
+import { initWorkspace, WS_ROUTES } from './ws/workspace.js';
+import { WS_ICONS } from './ws/dom.js';
 
 const SAMPLE_URL = 'data/sample_receipts.json';
 const SAMPLE_LIST_DATE = 'Aug 2023';
 const BASE_LABELS = { sample: 'Sample', yours: 'Your receipts', file: 'Opened file' };
 const GENESIS = '0'.repeat(64);
-const ROUTES = { start: 'Get started', receipts: 'Receipts', raw: 'Raw receipts', about: 'How it runs' };
+const ROUTES = { ...WS_ROUTES, start: 'Get started', receipts: 'Verify receipts', raw: 'Raw receipts', about: 'How it runs' };
 const OVERLAY_PANEL_QUERY = '(max-width: 1199px)';
 const COPIED_MS = 1200;
 const HASH_PREFIX = 12;
@@ -47,6 +49,7 @@ const CHECK_NAMES = { signature: 'signature', signer: 'signer', binding: 'paymen
 const PASS_NOTE = 'This ran in your browser and sent nothing anywhere. It shows these receipts are unchanged since they were signed. It does not re-run the screening or show that the list was complete.';
 
 const ICONS = {
+  ...WS_ICONS,
   list: 'M3 4.5h10M3 8h10M3 11.5h10',
   code: 'M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5',
   info: 'M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12ZM8 7.5V11M8 5v.5',
@@ -93,7 +96,7 @@ const state = {
   selected: null,
   filter: 'all',
   tab: 'fields',
-  route: 'receipts',
+  route: 'dashboard',
   latestRun: 0,
 };
 
@@ -1098,7 +1101,9 @@ function setRoute(route, { focus = false } = {}) {
   });
   $('tg-title').textContent = ROUTES[route];
   document.body.dataset.route = route;
+  document.body.dataset.group = Object.hasOwn(WS_ROUTES, route) ? 'workspace' : 'tools';
   editLink.hidden = route === 'raw';
+  if (Object.hasOwn(WS_ROUTES, route)) workspace?.show(route);
   renderPanel();
   if (focus) $('tg-title').focus();
 }
@@ -1146,7 +1151,7 @@ function bindShell() {
     const route = routeFromHash();
     if (route) setRoute(route, { focus: true });
   });
-  setRoute(routeFromHash() ?? 'start');
+  setRoute(routeFromHash() ?? 'dashboard');
 }
 
 /**
@@ -1165,6 +1170,8 @@ function problemReportHref() {
   };
   return `report.html${contextFragment(context)}`;
 }
+
+let workspace = null;
 
 async function start() {
   bindShell();
@@ -1189,6 +1196,16 @@ async function start() {
     state.phase = 'load-error';
   }
   renderAll();
+  workspace = await initWorkspace({
+    openInVerifier(text, listDate, kind) {
+      if (state.phase !== 'ready') return;
+      setBase(text, kind, listDate);
+      location.hash = 'receipts';
+      setRoute('receipts', { focus: true });
+      void run();
+    },
+  });
+  if (Object.hasOwn(WS_ROUTES, state.route)) workspace.show(state.route);
   void initStart({
     openInVerifier(text, listDate, kind) {
       if (state.phase !== 'ready') return;

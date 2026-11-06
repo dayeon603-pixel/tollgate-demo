@@ -310,7 +310,7 @@ export class Workspace {
     }
     switch (action) {
       case 'assign':
-        if (input.assignee !== undefined && !this.user(input.assignee)) return 'Pick a user to assign.';
+        if (input.assignee && !this.user(input.assignee)) return 'Pick a user to assign.';
         return null;
       case 'start_review': return alert.status === 'open' ? null : 'Review has already started.';
       case 'escalate':

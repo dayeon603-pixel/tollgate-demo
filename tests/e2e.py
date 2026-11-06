@@ -131,7 +131,7 @@ def main(base: str, shots: Path) -> int:
         expect(banner(page) == "fail", "app: edited signature fails")
 
         # 5. Get started: screen, sign, download, check package, verify, tamper.
-        page.goto(urljoin(base, "app.html"))
+        page.goto(urljoin(base, "app.html#start"))
         page.wait_for_function("() => !document.getElementById('st-screen').disabled")
         expect(page.locator("#tg-title").inner_text() == "Get started", "app: opens on Get started")
         expect("10/21/2026" in (page.locator("#st-prov").text_content() or ""), "start: list provenance shows the OFAC publish date")
@@ -308,7 +308,7 @@ def main(base: str, shots: Path) -> int:
         ctx = browser.new_context(viewport=PHONE)
         page = ctx.new_page()
         watch(page, origin, errors, foreign)
-        page.goto(urljoin(base, "app.html"))
+        page.goto(urljoin(base, "app.html#start"))
         page.wait_for_function("() => !document.getElementById('st-screen').disabled")
         page.fill("#st-address", page.locator("#st-example").inner_text())
         page.click("#st-screen")
