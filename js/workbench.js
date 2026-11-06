@@ -134,35 +134,36 @@ export function emptyChain(meta) {
 }
 
 /**
- * Signs one screening decision and appends it to a chain, in the same format as the sample.
+ * Signs one event and appends it to a chain, in the same format as the sample. The screening flow
+ * and the analyst workspace both build their receipts here, so the verifier treats them alike.
  *
  * Args: chain, a receipt file built by emptyChain (changed in place); meta, the list provenance;
- *   decision, { address, amount, outcome, matches }; now, the Date of the check.
+ *   spec, { id, type, params, decision, outcome, reasons, agentId } where id labels the receipt
+ *   (default u<seq+1>), decision is the signed verdict ("ALLOW", "DENY", "HOLD", "RECORD"),
+ *   outcome is the first signed reason and reasons are appended after the list labels;
+ *   now, the Date of the event.
  * Returns: the new receipt.
  */
-export async function appendReceipt(chain, meta, decision, now = new Date()) {
+export async function appendSigned(chain, meta, spec, now = new Date()) {
   const seq = chain.receipts.length;
   const prevHash = seq === 0 ? GENESIS : chain.receipts[seq - 1].this_hash;
-  const id = `u${seq + 1}`;
+  const id = spec.id ?? `u${seq + 1}`;
   const version = rulebookVersion(meta);
-  const params = { payment_id: id, outcome: decision.outcome, beneficiary_address: decision.address };
-  if (decision.amount !== null && decision.amount !== undefined) params.amount_usd = decision.amount;
   const iso = now.toISOString();
   const action = {
     action_id: `act:${id}`,
-    agent_id: AGENT_ID,
+    agent_id: spec.agentId ?? AGENT_ID,
     mandate_id: `rulebook:${version}`,
-    type: 'stablecoin_payment_screen',
-    params,
+    type: spec.type ?? 'stablecoin_payment_screen',
+    params: spec.params,
     requested_at: iso,
   };
-  const hits = decision.matches.map((entry) => `sanctions_hit=SDN-${entry.uid}-${entry.chain}`);
   const unsigned = {
     verdict_id: `vd:${id}`,
     action_id: action.action_id,
     authorizer_id: SAMPLE_PUBLIC_KEY,
-    decision: decision.outcome === 'BLOCK' ? 'DENY' : 'ALLOW',
-    reasons: [`outcome=${decision.outcome}`, `rulebook_version=${version}`, `list_snapshot=${meta.list_digest}`, ...(hits.length ? hits : ['clean'])],
+    decision: spec.decision,
+    reasons: [`outcome=${spec.outcome}`, `rulebook_version=${version}`, `list_snapshot=${meta.list_digest}`, ...spec.reasons],
     decided_at: iso,
     action_digest: await sha256Hex(canon(action)),
   };
@@ -172,6 +173,27 @@ export async function appendReceipt(chain, meta, decision, now = new Date()) {
   receipt.this_hash = await sha256Hex(canon({ seq, prev_hash: prevHash, action, verdict }));
   chain.receipts.push(receipt);
   return receipt;
+}
+
+/**
+ * Signs one screening decision and appends it to a chain, in the same format as the sample.
+ *
+ * Args: chain, a receipt file built by emptyChain (changed in place); meta, the list provenance;
+ *   decision, { address, amount, outcome, matches }; now, the Date of the check.
+ * Returns: the new receipt.
+ */
+export async function appendReceipt(chain, meta, decision, now = new Date()) {
+  const id = `u${chain.receipts.length + 1}`;
+  const params = { payment_id: id, outcome: decision.outcome, beneficiary_address: decision.address };
+  if (decision.amount !== null && decision.amount !== undefined) params.amount_usd = decision.amount;
+  const hits = decision.matches.map((entry) => `sanctions_hit=SDN-${entry.uid}-${entry.chain}`);
+  return appendSigned(chain, meta, {
+    id,
+    params,
+    decision: decision.outcome === 'BLOCK' ? 'DENY' : 'ALLOW',
+    outcome: decision.outcome,
+    reasons: hits.length ? hits : ['clean'],
+  }, now);
 }
 
 /** The exact text of a receipt package: the receipts file the verifier reads, nothing added. */
