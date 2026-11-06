@@ -116,10 +116,10 @@ export function renderScreening(ctx, root) {
     run.disabled = true;
     st.busy = true;
     const batchId = `B${Date.now().toString(36)}`;
-    const results = await runBatch(ws, parsed.rows, {
+    const results = await ctx.measure.time('batch', 'Batch screened and signed', () => runBatch(ws, parsed.rows, {
       actor: ctx.userId, batchId, now: () => ctx.now(),
       onProgress: (done, total) => { status.textContent = `Screened ${done} of ${total}`; },
-    });
+    }), (r) => ({ addresses: r.length }));
     st.busy = false;
     st.results = results;
     st.filter = 'all';

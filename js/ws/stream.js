@@ -333,7 +333,7 @@ export class LiveTape {
 
 /** Drives a LiveTape on a timer. States: off, live, paused. Browser use only. */
 export class LiveRunner {
-  constructor(tape, { onTick = () => {}, onState = () => {}, schedule = setTimeout, cancel = clearTimeout, now = () => performance.now() } = {}) {
+  constructor(tape, { onTick = () => {}, onState = () => {}, schedule = (fn, ms) => setTimeout(fn, ms), cancel = (id) => clearTimeout(id), now = () => performance.now() } = {}) {
     this.tape = tape;
     this.onTick = onTick;
     this.onState = onState;

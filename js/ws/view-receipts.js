@@ -77,7 +77,7 @@ export function renderExplorer(ctx, root) {
   const verifyAll = h('button', { type: 'button', class: 'btn btn--primary', on: { click: async () => {
     verifyAll.disabled = true;
     verifyAll.textContent = 'Verifying';
-    const result = await ws.ledger.verifyAll();
+    const result = await ctx.measure.time('ledger_verify', 'Whole ledger verified', () => ws.ledger.verifyAll(), (r) => ({ receipts: ws.ledger.size, segments: r.segments.length }));
     verifyAll.disabled = false;
     verifyAll.textContent = 'Verify the whole ledger';
     clear(verifyHost);

@@ -55,14 +55,14 @@ export function renderEvidence(ctx, root) {
       h('div', { class: 'btnrow' },
         h('button', { type: 'button', class: 'btn btn--primary', on: { click: () => exportPack('json') } }, icon('download'), 'Download pack (JSON)'),
         h('button', { type: 'button', class: 'btn', on: { click: () => exportPack('html') } }, icon('download'), 'Download report (HTML, printable)'),
-        h('button', { type: 'button', class: 'btn', on: { click: async () => { st.check = await verifyPack(st.pack); st.checkName = 'the pack you just built'; ctx.refresh(); } } }, 'Check this pack now')),
+        h('button', { type: 'button', class: 'btn', on: { click: async () => { st.check = await ctx.measure.time('pack_verify', 'Evidence pack checked', () => verifyPack(st.pack), () => ({ receipts: st.pack.selection.count })); st.checkName = 'the pack you just built'; ctx.refresh(); } } }, 'Check this pack now')),
       h('p', { class: 'field__hint', text: 'Downloading records an evidence_export receipt. Open the HTML file and use your browser\'s print command to save a PDF.' })));
   };
-  const build = h('button', { type: 'button', class: 'btn btn--primary', disabled: !ws.can(ctx.userId, 'export'), on: { click: async () => {
+  const doBuild = async () => {
     st.error = '';
     error.textContent = '';
     try {
-      st.pack = await buildPack(ws, scopeNow(), { now: ctx.now(), actor: ctx.userId });
+      st.pack = await ctx.measure.time('pack_build', `Evidence pack built (${st.type === 'case' ? 'one case' : st.type === 'all' ? 'whole ledger' : 'date range'})`, () => buildPack(ws, scopeNow(), { now: ctx.now(), actor: ctx.userId }), (p) => ({ receipts: p.selection.count }));
       st.exported = null;
       st.check = null;
     } catch (e) {
@@ -71,7 +71,8 @@ export function renderEvidence(ctx, root) {
       error.textContent = e.message;
     }
     drawPreview();
-  } } }, 'Build pack');
+  };
+  const build = h('button', { type: 'button', class: 'btn btn--primary', id: 'ev-build-btn', disabled: !ws.can(ctx.userId, 'export'), on: { click: doBuild } }, 'Build pack');
 
   root.append(
     h('p', { class: 'notice' }, h('strong', { text: 'Demo evidence. ' }), 'Built from the synthetic ledger in this browser. A real pack would hold your receipts; the structure, hashes and offline checks are the same.'),
@@ -80,6 +81,7 @@ export function renderEvidence(ctx, root) {
       h('div', { class: 'filters' }, field('From', from), field('To', to), field('Case', caseSel)), build, error), preview),
   );
   drawPreview();
+  if (params.auto && params.case && ws.can(ctx.userId, 'export')) doBuild();
 
   // Check a pack
   const file = h('input', { id: 'ev-file', class: 'sr', type: 'file', accept: '.json,application/json' });

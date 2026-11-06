@@ -18,15 +18,23 @@ import { renderLists, renderMonitoring } from './view-lists.js';
 import { receiptView, renderActivity, renderExplorer } from './view-receipts.js';
 import { renderEvidence } from './view-evidence.js';
 import { renderApi, renderPolicy } from './view-admin.js';
+import { renderLive } from './view-live.js';
+import { renderGraph } from './view-graph.js';
+import { renderFlow } from './view-flow.js';
+import { renderValue } from './view-value.js';
+import { liveReceiptView } from './view-livereceipt.js';
+import { createLive } from './live.js';
+import { buildStatusBar } from './statusbar.js';
+import { initPalette } from './palette-ui.js';
+import { Measurements } from './timecost.js';
+import { cleanTargets, DEFAULT_SLA_HOURS, normalizeView, upsertView } from './triage.js';
+import { WS_ROUTES } from './workspace-routes.js';
 
+export { WS_ROUTES };
 export const LIST_URL = 'data/ofac_crypto_addresses.json';
-export const WS_ROUTES = {
-  dashboard: 'Dashboard', alerts: 'Alerts', screening: 'Screening', monitoring: 'Monitoring', lists: 'Lists',
-  explorer: 'Receipt explorer', evidence: 'Evidence packs', policy: 'Policy and roles', activity: 'Activity log', api: 'API examples',
-};
 const RENDERERS = {
-  dashboard: renderDashboard, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, lists: renderLists,
-  explorer: renderExplorer, evidence: renderEvidence, policy: renderPolicy, activity: renderActivity, api: renderApi,
+  dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph, flow: renderFlow,
+  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, value: renderValue, policy: renderPolicy, activity: renderActivity, api: renderApi,
 };
 const TOAST_MS = 6000;
 const RESET_CONFIRM_MS = 5000;
@@ -34,7 +42,12 @@ const $ = (id) => document.getElementById(id);
 
 export async function initWorkspace({ openInVerifier }) {
   const roots = Object.fromEntries(Object.keys(WS_ROUTES).map((route) => [route, $(`ws-view-${route}`)]));
-  const prefs = { user: 'analyst-a', theme: null, ...(readJson(PREFS_KEY) ?? {}) };
+  const prefs = { user: 'analyst-a', theme: null, views: [], sla: { ...DEFAULT_SLA_HOURS }, ...(readJson(PREFS_KEY) ?? {}) };
+  prefs.views = (Array.isArray(prefs.views) ? prefs.views : []).map(normalizeView).filter(Boolean);
+  prefs.sla = cleanTargets(prefs.sla);
+  const measure = new Measurements();
+  let live = null;
+  let statusUpdate = () => {};
   let ws = null;
   let anchor = null;
   let route = null;
@@ -47,7 +60,7 @@ export async function initWorkspace({ openInVerifier }) {
 
   const savePrefs = () => writeJson(PREFS_KEY, prefs);
   const applyTheme = () => {
-    const theme = prefs.theme ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const theme = prefs.theme ?? 'dark';
     document.documentElement.dataset.theme = theme;
     return theme;
   };
@@ -97,6 +110,15 @@ export async function initWorkspace({ openInVerifier }) {
   // ---- context ---------------------------------------------------------------------------
   const ctx = {
     get ws() { return ws; },
+    get live() { return live; },
+    measure,
+    intent: null,
+    get sla() { return prefs.sla; },
+    setSla(targets) { prefs.sla = cleanTargets(targets); savePrefs(); },
+    get views() { return prefs.views; },
+    saveView(view) { prefs.views = upsertView(prefs.views, view); savePrefs(); },
+    deleteView(name) { prefs.views = prefs.views.filter((v) => v.name !== name); savePrefs(); },
+    openLive: (record) => openDrawer({ title: `Stream receipt ${record.receiptId.replace('rcpt:', '')}`, build: () => liveReceiptView(ctx, record) }, { push: dlg.open && drawerStack.length > 0 }),
     get userId() { return prefs.user; },
     get listMeta() { return listMeta; },
     now: () => new Date(),
@@ -110,7 +132,7 @@ export async function initWorkspace({ openInVerifier }) {
       if (location.hash.slice(1) === target) show(target);
       else location.hash = target;
     },
-    openAlert: (id) => openDrawer({ title: `Alert ${id}`, build: () => caseView(ctx, id) }, { push: dlg.open && drawerStack.length > 0 }),
+    openAlert: (id, intent = null) => { ctx.intent = intent ? { id, ...intent } : null; return openDrawer({ title: `Alert ${id}`, build: () => caseView(ctx, id) }, { push: dlg.open && drawerStack.length > 0 }); },
     openReceipt: (id) => openDrawer({ title: `Receipt ${id.replace('rcpt:', '')}`, build: () => receiptView(ctx, id) }, { push: dlg.open && drawerStack.length > 0 }),
     persist() {
       if (!writeJson(STATE_KEY, snapshot(ws, anchor)) && !storageWarned) {
@@ -143,7 +165,7 @@ export async function initWorkspace({ openInVerifier }) {
       }
       if (dlg.open) drawCurrent();
     },
-    refreshChrome: () => drawBar(),
+    refreshChrome: () => { drawBar(); statusUpdate(); },
   };
 
   // ---- chrome ----------------------------------------------------------------------------
@@ -177,6 +199,7 @@ export async function initWorkspace({ openInVerifier }) {
       h('p', { class: 'wsbar__demo' }, h('span', { class: 'demo-badge__dot', 'aria-hidden': 'true' }), h('strong', { text: 'Demo workspace' }), ' Synthetic payments and people. Real list, real receipts.'),
       h('div', { class: 'wsbar__right' },
         h('span', { class: 'wsbar__list', title: `Digest ${version.digest}` }, `List in force: ${version.label}`, ws.pendingVersion ? h('a', { href: '#lists', class: 'wsbar__update', text: 'update available' }) : null),
+        h('button', { type: 'button', class: 'btn btn--ghost', id: 'ws-palette-open', 'aria-keyshortcuts': 'Control+K Meta+K', on: { click: () => palette.open() } }, icon('search'), 'Search', h('kbd', { class: 'kbd', text: navigator.platform?.includes('Mac') ? '\u2318K' : 'Ctrl K' })),
         h('label', { class: 'wsbar__user' }, h('span', { text: 'Acting as' }), userSelect), themeButton, reset));
   }
 
@@ -188,9 +211,26 @@ export async function initWorkspace({ openInVerifier }) {
     toast('Demo reset. Your changes were erased and the sample history was rebuilt.');
   }
 
+  // ---- status bar and command palette ----------------------------------------------------
+  statusUpdate = buildStatusBar(ctx, $('ws-status'));
+  const toggleTheme = () => { prefs.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; savePrefs(); applyTheme(); drawBar(); };
+  const palette = initPalette(ctx, {
+    actions: [
+      { id: 'theme', title: 'Switch between dark and light theme', keywords: 'theme dark light' },
+      { id: 'stream', title: 'Start or pause the demo stream', keywords: 'live stream start pause resume synthetic' },
+      { id: 'stream-stop', title: 'Stop the demo stream', keywords: 'live stream stop off' },
+    ],
+    run(action) {
+      if (action === 'theme') toggleTheme();
+      else if (action === 'stream' && live) { if (live.runner.state === 'live') live.runner.pause(); else live.runner.start(); }
+      else if (action === 'stream-stop' && live) live.runner.stop();
+    },
+  });
+
   // ---- boot ------------------------------------------------------------------------------
   function show(target) {
     route = target;
+    if (live) live.view = null;
     if (!ready) {
       for (const [name, root] of Object.entries(roots)) if (name === target) clear(root).append(h('div', { class: 'skeleton' }, h('div', { class: 'skeleton__row' }), h('div', { class: 'skeleton__row' }), h('div', { class: 'skeleton__row' })));
       return;
@@ -215,6 +255,9 @@ export async function initWorkspace({ openInVerifier }) {
       const built = await createWorkspace({ list: listJson, anchor, savedOps: usable ? saved.ops : [] });
       ws = built.ws;
       ready = true;
+      live?.dispose();
+      live = createLive(ctx);
+      live.bar = statusUpdate;
       ctx.persist();
       if (built.replayError && usable) toast('Your saved changes could not be restored, so the demo started fresh.', 'bad');
     } catch (error) {
@@ -224,6 +267,7 @@ export async function initWorkspace({ openInVerifier }) {
       return;
     }
     drawBar();
+    statusUpdate();
     if (route) show(route);
   }
 

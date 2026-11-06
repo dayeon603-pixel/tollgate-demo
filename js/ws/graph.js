@@ -97,7 +97,11 @@ export function suggestedAddresses(payments, version, limit = 8) {
     }
   }
   const rows = Array.from(seen.values());
-  for (const r of rows) r.listed = matchIn(version, r.address).length > 0;
-  rows.sort((a, b) => Number(b.listed) - Number(a.listed) || b.count - a.count || a.address.localeCompare(b.address));
+  for (const r of rows) {
+    const entries = matchIn(version, r.address);
+    r.listed = entries.length > 0;
+    r.rank = !r.listed ? 2 : entries[0].synthetic ? 1 : 0;
+  }
+  rows.sort((a, b) => a.rank - b.rank || b.count - a.count || a.address.localeCompare(b.address));
   return rows.slice(0, limit);
 }

@@ -1,6 +1,7 @@
 /** Dashboard: volume, outcomes, open work, receipts and the list in force. All volumes are synthetic. */
 import { card, clear, h, kv, mono, money, stamp } from './dom.js';
 import { chartTable, hbars, legend, SERIES, stackedBars } from './charts.js';
+import { sparkline } from './live-chart.js';
 import { describe } from './describe.js';
 import { isOpenWork } from './engine.js';
 import { summary } from './metrics.js';
@@ -8,11 +9,11 @@ import { ageLabel } from './metrics.js';
 
 const pct = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}% of screened` : 'no data');
 
-function kpi(label, value, sub, route, ctx) {
+function kpi(label, value, sub, route, ctx, spark = null) {
   const name = route
     ? h('a', { href: `#${route}`, on: { click: () => ctx.setParams(route, {}) } }, label)
     : label;
-  return h('div', { class: 'kpi' }, h('dt', {}, name), h('dd', { text: String(value) }), h('p', { class: 'kpi__sub', text: sub }));
+  return h('div', { class: 'kpi' }, h('dt', {}, name), h('dd', { text: String(value) }), h('p', { class: 'kpi__sub', text: sub }), spark ? h('div', { class: 'kpi__spark' }, sparkline(spark.values, { cls: spark.cls })) : null);
 }
 
 export function renderDashboard(ctx, root) {
@@ -26,10 +27,10 @@ export function renderDashboard(ctx, root) {
   root.append(
     h('p', { class: 'notice' }, h('strong', { text: 'Synthetic demo data. ' }), `The ${s.total} payments below were generated for this demo. Receipts, signatures and the list are real; the volumes, counterparties and people are not.`),
     h('dl', { class: 'kpis' },
-      kpi('Screened, 30 days', s.total, 'demo volume', 'explorer', ctx),
-      kpi('Allowed', s.allow, pct(s.allow, s.total)),
-      kpi('Held by policy', s.hold, pct(s.hold, s.total), 'alerts', ctx),
-      kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx),
+      kpi('Screened, 30 days', s.total, 'demo volume', 'explorer', ctx, { values: s.rows.map((r) => r.total), cls: 'allow' }),
+      kpi('Allowed', s.allow, pct(s.allow, s.total), null, ctx, { values: s.rows.map((r) => r.allow), cls: 'allow' }),
+      kpi('Held by policy', s.hold, pct(s.hold, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.hold), cls: 'hold' }),
+      kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.block), cls: 'block' }),
       kpi('Open alerts', s.openAlerts, `${s.awaitingApproval} awaiting approval`, 'alerts', ctx),
       kpi('Receipts issued', s.receipts, `in ${s.segments} ledger segments`, 'explorer', ctx),
       kpi('List in force', s.listVersion ? s.listVersion.label : 'none', `${s.listVersion?.real ? 'OFAC snapshot' : 'demo version'}${s.listChangedAt ? `, since ${stamp(s.listChangedAt).slice(0, 10)}` : ''}`, 'lists', ctx),

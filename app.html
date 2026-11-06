@@ -10,6 +10,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/workspace.css">
+  <link rel="stylesheet" href="css/terminal.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -23,12 +24,16 @@
       <p class="demo-badge"><span class="demo-badge__dot" aria-hidden="true"></span>Demo: sample data</p>
       <nav class="side__nav" aria-label="Workspace">
         <a class="navlink" href="#dashboard" data-route="dashboard"><span data-icon="grid"></span>Dashboard</a>
+        <a class="navlink" href="#live" data-route="live"><span data-icon="pulse"></span>Live</a>
         <a class="navlink" href="#alerts" data-route="alerts"><span data-icon="bell"></span>Alerts<span class="navbadge" id="ws-nav-alerts"></span></a>
         <a class="navlink" href="#screening" data-route="screening"><span data-icon="scan"></span>Screening</a>
         <a class="navlink" href="#monitoring" data-route="monitoring"><span data-icon="eye"></span>Monitoring</a>
+        <a class="navlink" href="#graph" data-route="graph"><span data-icon="graph"></span>Counterparties</a>
+        <a class="navlink" href="#flow" data-route="flow"><span data-icon="chart"></span>Chains and hours</a>
         <a class="navlink" href="#lists" data-route="lists"><span data-icon="layers"></span>Lists</a>
         <a class="navlink" href="#explorer" data-route="explorer"><span data-icon="search"></span>Receipt explorer</a>
         <a class="navlink" href="#evidence" data-route="evidence"><span data-icon="file"></span>Evidence packs</a>
+        <a class="navlink" href="#value" data-route="value"><span data-icon="timer"></span>Time and cost</a>
         <a class="navlink" href="#policy" data-route="policy"><span data-icon="sliders"></span>Policy and roles</a>
         <a class="navlink" href="#activity" data-route="activity"><span data-icon="clock"></span>Activity log</a>
         <a class="navlink" href="#api" data-route="api"><span data-icon="plug"></span>API examples</a>
@@ -49,6 +54,7 @@
     </aside>
 
     <div class="app">
+      <div class="statusbar" id="ws-status" aria-label="Workspace status"></div>
       <header class="top">
         <h1 class="top__title" id="tg-title" tabindex="-1">Dashboard</h1>
         <dl class="top__meta">
@@ -80,6 +86,10 @@
           <div id="tg-result" class="banner" data-state="loading" role="status" aria-live="polite"></div>
 
           <section class="view" data-view="dashboard" hidden><div class="wsview" id="ws-view-dashboard"></div></section>
+          <section class="view" data-view="live" hidden><div class="wsview" id="ws-view-live"></div></section>
+          <section class="view" data-view="graph" hidden><div class="wsview" id="ws-view-graph"></div></section>
+          <section class="view" data-view="flow" hidden><div class="wsview" id="ws-view-flow"></div></section>
+          <section class="view" data-view="value" hidden><div class="wsview" id="ws-view-value"></div></section>
           <section class="view" data-view="alerts" hidden><div class="wsview" id="ws-view-alerts"></div></section>
           <section class="view" data-view="screening" hidden><div class="wsview" id="ws-view-screening"></div></section>
           <section class="view" data-view="monitoring" hidden><div class="wsview" id="ws-view-monitoring"></div></section>
@@ -248,6 +258,13 @@
       <button type="button" class="iconbtn" id="ws-drawer-close" aria-label="Close"><span data-icon="close"></span></button>
     </div>
     <div class="drawer__body" id="ws-drawer-body"></div>
+  </dialog>
+
+  <dialog class="palette" id="ws-palette" aria-label="Command palette">
+    <label class="sr" for="ws-palette-input">Search views, alerts and addresses</label>
+    <input id="ws-palette-input" class="palette__input" type="text" role="combobox" aria-expanded="true" aria-controls="ws-palette-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Go to a view, an alert id or an address">
+    <ul id="ws-palette-list" class="palette__list" role="listbox" aria-label="Results"></ul>
+    <p class="palette__foot">Up and down to move, Enter to open, Esc to close.</p>
   </dialog>
 
   <dialog class="drawer" id="tg-limits" aria-labelledby="tg-limits-title">
