@@ -17,7 +17,9 @@ export const MAX_SEGMENT_CHARS = 150_000;
 export const AGENT_ID = 'tollgate.workspace-demo';
 
 export class Ledger {
-  constructor() {
+  /** idPrefix: receipt ids are `${idPrefix}${n}`. The live stream uses "d" so its ids never collide with the workspace ledger's "u". */
+  constructor({ idPrefix = 'u' } = {}) {
+    this.idPrefix = idPrefix;
     /** @type {{id: string, versionId: string, meta: object, chain: object, chars: number}[]} */
     this.segments = [];
     /** Flat list in ledger order: { receipt, segment (index), n (1-based count over the ledger), versionId }. */
@@ -73,7 +75,7 @@ export class Ledger {
 
   async #add(segment, spec, meta, now) {
     const n = this.entries.length + 1;
-    const receipt = await appendSigned(segment.chain, meta, { ...spec, id: `u${n}`, agentId: spec.agentId ?? AGENT_ID }, now);
+    const receipt = await appendSigned(segment.chain, meta, { ...spec, id: `${this.idPrefix}${n}`, agentId: spec.agentId ?? AGENT_ID }, now);
     segment.chars += JSON.stringify(receipt, null, 2).length + 2;
     const entry = { receipt, segment: this.segments.indexOf(segment), n, versionId: segment.versionId };
     this.entries.push(entry);
