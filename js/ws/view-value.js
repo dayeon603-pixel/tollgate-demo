@@ -49,14 +49,14 @@ export function renderValue(ctx, root) {
     clear(out);
     if (!e.ready) { out.append(h('p', { class: 'card__note', text: `Enter your numbers to see an estimate. Still needed: ${e.missing.join('; ')}.` })); return; }
     const row = (label, now, withS, diff) => h('tr', {}, h('th', { scope: 'row', text: label }), h('td', { class: 'num mono', text: now }), h('td', { class: 'num mono', text: withS }), h('td', { class: 'num mono', text: diff }));
-    out.append(h('div', { class: 'tablewrap' }, h('table', { class: 'grid', id: 'tc-estimate' }, h('thead', {}, h('tr', {}, ['', 'Today (your inputs)', 'With receipts (your assumption)', 'Difference'].map((t, i) => h('th', { scope: 'col', class: i ? 'num' : '' }, t)))),
+    out.append(...[h('div', { class: 'tablewrap' }, h('table', { class: 'grid', id: 'tc-estimate' }, h('thead', {}, h('tr', {}, ['', 'Today (your inputs)', 'With receipts (your assumption)', 'Difference'].map((t, i) => h('th', { scope: 'col', class: i ? 'num' : '' }, t)))),
       h('tbody', {},
         row('Alert hours per year', fmt(e.now.alertHours), e.with ? fmt(e.with.alertHours) : 'not entered', ''),
         row('Audit hours per year', fmt(e.now.auditHours), e.with ? fmt(e.with.auditHours) : 'not entered', ''),
         row('Total hours per year', fmt(e.now.hours), e.with ? fmt(e.with.hours) : 'not entered', e.difference ? fmt(e.difference.hours) : 'not entered'),
         row('Cost per year (your hourly cost)', fmt(e.now.cost), e.with ? fmt(e.with.cost) : 'not entered', e.difference ? fmt(e.difference.cost) : 'not entered')))),
-    e.now.perAnalystHours !== null ? h('p', { class: 'field__hint', text: `About ${fmt(e.now.perAnalystHours)} hours per analyst per year at today's numbers.` }) : null,
-    h('p', { class: 'estimate__note', id: 'tc-note', text: ESTIMATE_NOTE }));
+    e.now.perAnalystHours != null ? h('p', { class: 'field__hint', text: `About ${fmt(e.now.perAnalystHours)} hours per analyst per year at today's numbers.` }) : null,
+    h('p', { class: 'estimate__note', id: 'tc-note', text: ESTIMATE_NOTE })].filter(Boolean));
   };
   const inputs = INPUTS.map((i) => {
     const input = h('input', { id: `tc-${i.key}`, class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: 'your number', value: st.values[i.key] ?? '' });
