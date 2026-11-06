@@ -42,7 +42,7 @@ export function renderGraph(ctx, root) {
       'aria-label': `${shortAddr(node.address)}${node.listed ? ', exact match on the list' : ''}, ${node.count} payments, ${money(node.valueUsd)}. Press Enter to pivot.` });
     const title = svg('title', {});
     title.textContent = `${node.address}\n${node.count} payments, ${money(node.valueUsd)} (sent to it ${money(node.receivedUsd)}, received from it ${money(node.sentUsd)})${node.listed ? `\nExact list match: ${node.entries.map((e) => e.name).join('; ')}` : ''}`;
-    g.append(title);
+    g.append(title, svg('rect', { x: x - 40, y: y - 22, width: 80, height: 50, class: 'ghit' }));
     if (node.listed) g.append(svg('rect', { x: x - 9, y: y - 9, width: 18, height: 18, transform: `rotate(45 ${x} ${y})`, class: 'gshape' }));
     else g.append(svg('circle', { cx: x, cy: y, r: 8, class: 'gshape' }));
     const label = svg('text', { x, y: y + 22, 'text-anchor': 'middle', class: 'glabel' });

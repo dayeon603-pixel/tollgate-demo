@@ -196,6 +196,7 @@ a.sb__val:hover { text-decoration: underline; }
 .gshape { fill: var(--surface); stroke: var(--c-allow); stroke-width: 2; }
 .gshape--listed, .gnode--listed .gshape { fill: var(--c-block); stroke: var(--ink); stroke-width: 1.5; }
 .gnode { cursor: pointer; }
+.ghit { fill: transparent; }
 .gnode--centre { cursor: default; }
 .gnode--centre .gshape { stroke-width: 3; }
 .gnode:hover .gshape { stroke: var(--ink); }
@@ -256,4 +257,12 @@ a.sb__val:hover { text-decoration: underline; }
   .bulk .input { width: 100%; }
   .viewsbar .input { width: 100%; }
   .livebar { gap: var(--s2); }
+}
+@media (max-width: 720px) {
+  .grid--tape tbody tr:nth-child(n+13) { display: none; }
+  .grid--tape td { height: auto; }
+}
+@media (max-width: 720px) {
+  .tchart__ax { font-size: 15px; }
+  .glabel { font-size: 13px; }
 }

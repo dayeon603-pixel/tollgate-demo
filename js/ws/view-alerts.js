@@ -260,7 +260,7 @@ export function caseView(ctx, alertId) {
   ctx.intent = null;
   if (intent) {
     note.value = caseSummary(ws, alert).join('\n').slice(0, MAX_NOTE_CHARS);
-    setTimeout(() => { (document.getElementById(`case-${intent.action}`) ?? note).focus(); }, 0);
+    setTimeout(() => { const target = document.getElementById(`case-${intent.action}`); (target && !target.disabled ? target : note).focus(); }, 0);
   }
 
   // Timeline
