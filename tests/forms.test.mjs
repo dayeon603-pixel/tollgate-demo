@@ -95,3 +95,22 @@ test('fallback text has To, Subject and the body', () => {
   const text = f.emailText({ to: 'dayeon603@gmail.com', subject: 'S', body: 'line1\nline2' });
   assert.equal(text, 'To: dayeon603@gmail.com\nSubject: S\n\nline1\nline2');
 });
+
+test('waitlist: required fields, band must be a known key, note optional', () => {
+  const ok = { name: 'Dayeon Kang', email: 'a@b.co', company: 'Acme', role: 'Compliance lead', volume: '1k_10k', note: '' };
+  assert.deepEqual(f.validateWaitlist(ok).errors, {});
+  const bad = f.validateWaitlist({ name: '', email: 'x', company: '', role: '', volume: '__proto__', note: 'n'.repeat(2001) });
+  assert.deepEqual(Object.keys(bad.errors).sort(), ['company', 'email', 'name', 'note', 'role', 'volume']);
+  assert.ok(f.validateWaitlist({ ...ok, volume: '' }).errors.volume);
+});
+
+test('waitlist: own subject, mailto round trip, no promises in the body', () => {
+  const values = f.validateWaitlist({ name: "O'Neil & Co", email: 'a@b.co', company: 'Acme 성남', role: 'CCO', volume: 'not_sure', note: 'Hi & hello? 100%' }).values;
+  const message = f.composeWaitlist(values);
+  assert.equal(message.subject, 'Tollgate waitlist');
+  assert.notEqual(message.subject, f.composeContact({ ...good }).subject);
+  assert.match(message.body, /Rough monthly screening volume: Not sure yet/);
+  const url = new URL(f.mailtoUrl(message));
+  assert.equal(decodeURIComponent(url.search.match(/subject=([^&]*)/)[1]), 'Tollgate waitlist');
+  assert.match(decodeURIComponent(url.search.match(/body=([^&]*)/)[1]), /Hi & hello\? 100%/);
+});

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Sign in · Tollgate</title>
+  <meta name="description" content="Open the Tollgate demo workspace as a sample user.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+  <script type="module" src="js/signin.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="./#product">Product</a>
+        <a href="./#how">How it works</a>
+        <a href="app.html">Try it</a>
+        <a href="signin.html">Sign in</a>
+      </nav>
+      <a class="btn btn--ghost btn--sm nav__cta" href="waitlist.html">Join the waitlist</a>
+    </div>
+  </header>
+  <main id="main" class="doc">
+    <div class="wrap doc__wrap">
+      <h1 class="doc__title">Sign in to the demo</h1>
+      <p class="doc__lead">Choose a sample user to open the demo workspace. This is a demo, not an account system: there is no password and nothing is sent anywhere. Real accounts come with a deployment of Tollgate and use your own single sign-on.</p>
+      <form class="form signin" id="signin-form" novalidate>
+        <fieldset class="signin__set">
+          <legend>Sample user</legend>
+          <div id="signin-users" class="signin__users"></div>
+        </fieldset>
+        <p class="form__note" id="signin-note">The role decides what you can do in the workspace: analysts screen and propose, approvers and admins approve, admins change policy. You can switch user later from the workspace bar.</p>
+        <div class="form__actions"><button type="submit" class="btn btn--primary" id="signin-go">Open the demo workspace</button></div>
+        <p class="form__error" id="signin-warn" role="status"></p>
+      </form>
+      <p class="doc__lead">No access yet? <a href="waitlist.html">Join the early-access waitlist</a>.</p>
+    </div>
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="contact.html">Contact</a>
+        <a href="waitlist.html">Waitlist</a>
+        <a href="report.html">Report a problem</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

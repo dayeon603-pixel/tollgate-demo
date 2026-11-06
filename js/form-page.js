@@ -13,6 +13,9 @@ import {
   reportDetails,
   validateContact,
   validateReport,
+  validateWaitlist,
+  composeWaitlist,
+  VOLUME_BANDS,
 } from './forms.js';
 
 const $ = (id) => document.getElementById(id);
@@ -84,7 +87,7 @@ function showErrors(form, prefix, names, errors, summary) {
 }
 
 /** After submit: the confirmation, a link to open the email again and the copy fallback. */
-function showDone(done, message, result) {
+function showDone(done, message, result, custom = null) {
   const copyButton = el('button', { cls: 'btn btn--ghost btn--sm', text: 'Copy message', attrs: { type: 'button' } });
   const copyStatus = el('span', { cls: 'form__copied', attrs: { role: 'status' } });
   copyButton.addEventListener('click', async () => {
@@ -93,7 +96,8 @@ function showDone(done, message, result) {
   });
   const kids = result.mode === 'mailto'
     ? [
-      el('p', { cls: 'form__done-lead', text: 'Your email app opened with your message. Press send there.' }),
+      el('p', { cls: 'form__done-lead', text: custom?.lead ?? 'Your email app opened with your message. Press send there.' }),
+      custom ? el('p', { text: custom.detail }) : null,
       el('p', { text: `If no email app opened, copy the message and send it to ${message.to} from any email account.` }),
       el('div', { cls: 'form__done-actions', kids: [copyButton, el('a', { cls: 'btn btn--ghost btn--sm', text: 'Open email again', attrs: { href: result.url, id: `${done.id}-mailto` } }), copyStatus] }),
       el('pre', { cls: 'preview__text', text: emailText(message) }),
@@ -147,6 +151,26 @@ function initContact(form) {
   });
 }
 
+function initWaitlist(form) {
+  const names = ['name', 'email', 'company', 'role', 'volume', 'note'];
+  const summary = $('wl-summary');
+  const done = $('wl-done');
+  const volume = form.elements.namedItem('volume');
+  for (const [value, label] of Object.entries(VOLUME_BANDS)) volume.append(el('option', { text: label, attrs: { value } }));
+  bindCounter($('wl-note'), $('wl-note-count'), LIMITS.message);
+  clearFixed(form, 'wl', names, validateWaitlist);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    done.hidden = true;
+    const { values, errors } = validateWaitlist(readFields(form, names));
+    if (!showErrors(form, 'wl', names, errors, summary)) return;
+    const message = composeWaitlist(values);
+    const result = await deliver(message, { open: openUrl, fetch: window.fetch.bind(window) });
+    showDone(done, message, result, { lead: "You're on the list", detail: 'Your email app opened with your request. Press send there to complete it. Nothing reaches us until you do.' });
+    done.append(el('div', { cls: 'form__done-actions', kids: [el('a', { cls: 'btn btn--primary btn--sm', text: 'Open the demo workspace', attrs: { href: 'app.html#dashboard', id: 'wl-open-demo' } })] }));
+  });
+}
+
 function initReport(form) {
   const names = ['happened', 'steps', 'expected', 'email'];
   const summary = $('report-summary');
@@ -176,5 +200,7 @@ function initReport(form) {
 
 const contact = $('contact-form');
 if (contact) initContact(contact);
+const waitlist = $('waitlist-form');
+if (waitlist) initWaitlist(waitlist);
 const report = $('report-form');
 if (report) initReport(report);

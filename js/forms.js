@@ -12,7 +12,13 @@
 export const FORM_ENDPOINT = '';
 export const CONTACT_TO = 'dayeon603@gmail.com';
 export const TOPICS = { walkthrough: 'Walkthrough', partnership: 'Partnership', press: 'Press', other: 'Other' };
-export const LIMITS = { name: 100, email: 254, company: 120, message: 2000, short: 2000 };
+export const LIMITS = { name: 100, email: 254, company: 120, message: 2000, short: 2000, role: 100 };
+export const WAITLIST_SUBJECT = 'Tollgate waitlist';
+/** Rough monthly screening volume, as bands. Nothing here is a price tier. */
+export const VOLUME_BANDS = {
+  under_1k: 'Under 1,000 a month', '1k_10k': '1,000 to 10,000 a month', '10k_100k': '10,000 to 100,000 a month',
+  '100k_1m': '100,000 to 1 million a month', over_1m: 'Over 1 million a month', not_sure: 'Not sure yet',
+};
 export const MIN_MESSAGE = 10;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -88,6 +94,49 @@ export function composeContact(values) {
     `Topic: ${TOPICS[values.topic]}`,
   ].join('\n');
   return { to: CONTACT_TO, subject, body };
+}
+
+/**
+ * Validates the early-access waitlist form. Name, work email, company, role and volume band are
+ * required; the note is optional.
+ *
+ * Returns: { values, errors } as validateContact.
+ */
+export function validateWaitlist(raw) {
+  const values = {
+    name: clean(raw.name), email: clean(raw.email), company: clean(raw.company), role: clean(raw.role),
+    volume: clean(raw.volume), note: clean(raw.note),
+  };
+  const errors = {};
+  if (!values.name) errors.name = 'Please add your name.';
+  if (!values.email) errors.email = 'Please add your work email so we can reach you.';
+  else if (!EMAIL_SHAPE.test(values.email)) errors.email = 'That email address looks incomplete. Check for a missing @ or domain.';
+  if (!values.company) errors.company = 'Please add your company.';
+  if (!values.role) errors.role = 'Please add your role.';
+  if (!Object.hasOwn(VOLUME_BANDS, values.volume)) errors.volume = 'Please choose a rough monthly volume. "Not sure yet" is fine.';
+  checkLength(errors, 'name', values.name, 'Your name', LIMITS.name);
+  checkLength(errors, 'email', values.email, 'The email address', LIMITS.email);
+  checkLength(errors, 'company', values.company, 'The company name', LIMITS.company);
+  checkLength(errors, 'role', values.role, 'Your role', LIMITS.role);
+  checkLength(errors, 'note', values.note, 'The note', LIMITS.message);
+  return { values, errors };
+}
+
+/** Builds the email for a valid waitlist form, with its own subject. Returns { to, subject, body }. */
+export function composeWaitlist(values) {
+  const body = [
+    'Please add me to the Tollgate early-access waitlist.',
+    '',
+    `Name: ${values.name}`,
+    `Work email: ${values.email}`,
+    `Company: ${values.company}`,
+    `Role: ${values.role}`,
+    `Rough monthly screening volume: ${VOLUME_BANDS[values.volume]}`,
+    '',
+    'Note:',
+    values.note || 'None',
+  ].join('\n');
+  return { to: CONTACT_TO, subject: WAITLIST_SUBJECT, body };
 }
 
 /**

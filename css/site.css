@@ -305,7 +305,7 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; font-variant-ligature
 @media (max-width: 720px) {
   .doc { padding: 48px 0 72px; }
   .doc__lead { font-size: 17px; }
-  .nav__links a[href="contact.html#sign-in"] { display: inline; }
+  .nav__links a[href="signin.html"] { display: inline; }
 }
 
 /* Forms */
@@ -364,3 +364,14 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; font-variant-ligature
   .attach__list div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .form__actions .btn { flex: 1 1 100%; }
 }
+
+/* Demo sign in */
+.signin { max-width: 640px; }
+.signin__set { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.signin__set legend { color: var(--ink); font-weight: 600; font-size: 15px; margin-bottom: 8px; padding: 0; }
+.signin__users { display: flex; flex-direction: column; gap: 10px; }
+.signin__user { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.signin__user:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.signin__user input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
+.signin__user label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; flex: 1; }
+.signin__user label span { color: var(--dim); font-size: 14.5px; }
