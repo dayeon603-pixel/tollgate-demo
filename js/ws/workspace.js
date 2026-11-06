@@ -60,6 +60,9 @@ export async function initWorkspace({ openInVerifier }) {
   let toastTimer = null;
   const toast = (message, kind = 'ok') => {
     const box = kind === 'bad' ? alertBox : toastBox;
+    // An open drawer sits in the top layer, above everything else, so the message goes inside it.
+    const host = dlg.open ? dlg : document.body;
+    if (box.parentNode !== host) host.append(box);
     box.textContent = message;
     box.dataset.show = 'true';
     clearTimeout(toastTimer);
@@ -84,7 +87,7 @@ export async function initWorkspace({ openInVerifier }) {
   const openDrawer = (entry, { push = false } = {}) => {
     drawerStack = push ? [...drawerStack, entry] : [entry];
     drawCurrent();
-    if (!push) dlgBody.scrollTop = 0;
+    dlgBody.scrollTop = 0;
   };
   dlgBack.addEventListener('click', () => { drawerStack.pop(); drawCurrent(); });
   $('ws-drawer-close').addEventListener('click', () => dlg.close());

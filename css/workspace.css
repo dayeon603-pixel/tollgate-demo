@@ -273,7 +273,16 @@ dialog[open] ~ .toast, dialog[open] .toast { z-index: 70; }
   .pager { flex-wrap: wrap; }
   .grid td.wrap { min-width: 0; }
   .ws-drawer { width: 100vw; }
+  .card__head .seg { overflow-x: auto; }
+  .card__head .seg .seg__btn { flex: none; }
+  .chartbox { overflow-x: auto; }
+  .chartbox .chart:not(.chart--small) { min-width: 640px; }
+  .kpis > .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .matrixtable td { grid-template-columns: 1fr 52px; }
 }
 
 .subhead { margin: 6px 0 0; font-size: 12px; font-weight: 650; color: var(--dim); }
+
+.card__head > .btn, .card__head > .seg + .btn { margin-left: auto; }
+.card__head > .seg ~ .btn { margin-left: 0; }
+.filters .fieldbox:first-child { flex: 2 1 220px; }

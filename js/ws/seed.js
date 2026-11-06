@@ -141,6 +141,12 @@ export async function seedWorkspace(ws, { anchor, held, seed = 20261106, days = 
     applied++;
     for (const alert of result.created ?? []) for (const op of lifecycle(alert, rand, users)) if (Date.parse(op.ts) <= end) queue.push(op);
   }
+  // Leave two clearances waiting for a second person, so the four-eyes queue has something in it.
+  const waiting = [...ws.alerts].reverse().filter((a) => a.kind === 'hold' && a.status === 'in_review' && !a.pending).slice(0, 2);
+  for (const alert of waiting) {
+    await ws.apply({ op: 'alertAction', ts: new Date(end).toISOString(), actor: users.b, alertId: alert.id, action: 'propose_clear', note: HOLD_NOTES[alert.rule] ?? 'Reviewed and released.' });
+    applied++;
+  }
   ws.seedCount = ws.ops.length;
   return applied;
 }

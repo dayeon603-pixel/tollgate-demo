@@ -70,6 +70,11 @@ def main(base: str, shots: Path) -> int:
                 expect(page.locator(f"#ws-view-{route}").inner_text().strip() != "", f"{theme} {route}: has content")
                 expect(page.locator("#ws-bar").inner_text().find("Synthetic") >= 0, f"{theme} {route}: demo label visible")
                 page.screenshot(path=str(shots / f"{route}_{theme}.png"), full_page=True)
+                unnamed = page.evaluate(
+                    "() => Array.from(document.querySelectorAll(`#ws-view-${location.hash.slice(1)} input, #ws-view-${location.hash.slice(1)} select, #ws-view-${location.hash.slice(1)} textarea`))"
+                    ".filter((e) => e.type !== 'hidden' && !(e.labels && e.labels.length) && !e.getAttribute('aria-label') && !e.getAttribute('aria-labelledby')).map((e) => e.id || e.name || e.tagName)"
+                )
+                expect(not unnamed, f"{theme} {route}: every form control has a name ({unnamed})")
         page.evaluate("() => localStorage.setItem('tollgate-demo-prefs-v1', JSON.stringify({user: 'analyst-a', theme: 'light'}))")
         page.goto(app + "#alerts")
         page.reload()
@@ -89,7 +94,7 @@ def main(base: str, shots: Path) -> int:
         page.fill("#al-q", "")
         page.select_option("#al-kind", "hold")
         page.click("button.seg__btn:has-text('Open work')")
-        row = page.locator("tr.grid__row", has=page.locator(".schip", has_text="In review")).first
+        row = page.locator("tr.grid__row", has=page.locator(".schip", has_text="In review"), has_not_text="approval pending").first
         row.locator("button.rowlink").click()
         page.wait_for_selector("#ws-drawer[open] .case")
         alert_id = page.locator("#ws-drawer-title").inner_text().replace("Alert ", "")
