@@ -316,8 +316,14 @@ test('evidence pack: range and case packs verify; edits are caught', async () =>
   assert.ok(range.selection.count > 0);
   assert.equal(range.demo, true);
   assert.ok(range.segments.every((s) => s.chain.receipts.length === s.receipt_count));
+  // The pack is a snapshot: later ledger activity (such as recording this export) must not change it.
+  await ws.apply({ op: 'evidenceExport', ts: tick(), actor: 'analyst-a', scope: range.scope, packDigest: range.pack_digest, receiptCount: range.selection.count, segmentCount: range.segments.length });
   const ok = await verifyPack(JSON.stringify(range));
   assert.equal(ok.ok, true, JSON.stringify(ok.checks.filter((c) => !c.ok)));
+
+  const whole = await buildPack(ws, { type: 'all' }, { now: NOW, actor: 'analyst-a' });
+  await ws.apply({ op: 'evidenceExport', ts: tick(), actor: 'analyst-a', scope: whole.scope, packDigest: whole.pack_digest, receiptCount: whole.selection.count, segmentCount: whole.segments.length });
+  assert.equal((await verifyPack(JSON.stringify(whole))).ok, true, 'a pack stays valid after its own export is recorded');
 
   const approved = ws.alerts.find((a) => a.timeline.some((t) => t.action === 'approve_clear'));
   const casePack = await buildPack(ws, { type: 'case', alertId: approved.id }, { now: NOW, actor: 'approver-c' });

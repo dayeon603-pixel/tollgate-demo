@@ -128,7 +128,8 @@ export function kv(rows) {
 }
 
 export function card(title, { sub, actions, id } = {}, ...body) {
-  return h('section', { class: 'card', 'aria-labelledby': id }, h('div', { class: 'card__head' }, h('h2', { class: 'card__title', id, text: title }), sub ? h('p', { class: 'card__sub', text: sub }) : null, actions ?? null), ...body);
+  return h('section', { class: 'card', id, 'aria-labelledby': id ? `${id}-h` : undefined },
+    h('div', { class: 'card__head' }, h('h2', { class: 'card__title', id: id ? `${id}-h` : undefined, text: title }), sub ? h('p', { class: 'card__sub', text: sub }) : null, actions ?? null), ...body);
 }
 
 export function empty(title, detail) {

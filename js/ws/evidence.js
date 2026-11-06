@@ -81,7 +81,7 @@ export async function buildPack(ws, scope, { now, actor }) {
     const text = packageText(segment.chain);
     segments.push({
       index, segment_id: segment.id, list_version_id: segment.versionId, receipt_count: segment.chain.receipts.length,
-      head_hash: segment.chain.receipts.at(-1).this_hash, text_sha256: await sha256Hex(text), chain: segment.chain,
+      head_hash: segment.chain.receipts.at(-1).this_hash, text_sha256: await sha256Hex(text), chain: JSON.parse(text),
     });
   }
   const versionIds = new Set(segments.map((s) => s.list_version_id));
