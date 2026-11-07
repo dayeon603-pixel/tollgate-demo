@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { createWorkspace } from '../js/ws/session.js';
 import { buildPack, verifyPack } from '../js/ws/evidence.js';
 import { LiveTape, LiveRunner, makeEvent, mixSeed, percentile, SPEEDS } from '../js/ws/stream.js';
-import { buildGraph, collectPayments, edgeWidth, layoutGraph, suggestedAddresses } from '../js/ws/graph.js';
+import { addressProfile, buildGraph, busiestAddress, collectPayments, edgeWidth, GRAPH_MAX_NODES, layoutGraph, suggestedAddresses } from '../js/ws/graph.js';
 import { buildCommands, rankCommands } from '../js/ws/palette.js';
 import { applyBulk, caseSummary, cleanTargets, DEFAULT_SLA_HOURS, planBulk, slaLabel, slaState, upsertView } from '../js/ws/triage.js';
 import { estimate, readNumber, ESTIMATE_NOTE } from '../js/ws/timecost.js';
@@ -130,7 +130,8 @@ test('graph: direct counterparties only, listed nodes flagged, widths by value',
   assert.ok(flagged.nodes.some((n) => n.listed), 'a counterparty that is on the list is flagged');
   assert.equal(buildGraph(payments, '0xnobody', ws.inForce).nodes.length, 0);
   assert.ok(edgeWidth(100, 100) > edgeWidth(1, 100));
-  assert.equal(layoutGraph(g, 600, 400).length, g.nodes.length);
+  // layoutGraph now returns the fitted canvas size with the positions, so the height follows the content.
+  assert.equal(layoutGraph(g, 600).pos.length, g.nodes.length);
   assert.deepEqual(buildGraph(payments, listed, ws.inForce), g);
 });
 
@@ -256,4 +257,40 @@ test('estimate: formula from the visitor inputs only', () => {
   assert.equal(readNumber(''), null);
   assert.equal(readNumber('0'), 0);
   assert.equal(estimate({ alertsPerMonth: 0, minutesNow: 0, auditsPerYear: 0, hoursNow: 0, hourlyCost: 0 }).now.cost, 0);
+});
+
+test('graph: default is the busiest address, two hops add real edges only, cap and layout hold', async () => {
+  const { ws } = await fresh();
+  const tape = tapeOf(ws);
+  const payments = collectPayments(ws, tape);
+  assert.ok(payments.some((p) => p.source === 'background'), 'synthetic background payments exist');
+  assert.deepEqual(collectPayments(ws, tapeOf(ws)).map((p) => p.id), payments.map((p) => p.id), 'deterministic');
+  const busiest = busiestAddress(payments);
+  const one = buildGraph(payments, busiest, ws.inForce, GRAPH_MAX_NODES, 1);
+  const two = buildGraph(payments, busiest, ws.inForce, GRAPH_MAX_NODES, 2);
+  assert.ok(one.nodes.length >= 10, `busiest has ${one.nodes.length} counterparties`);
+  assert.ok(two.nodes.length > one.nodes.length);
+  assert.ok(two.nodes.length <= GRAPH_MAX_NODES);
+  assert.equal(two.nodes.filter((n) => n.hop === 1).length <= Math.ceil(GRAPH_MAX_NODES * 0.45), true);
+  const count = (a) => new Set(payments.filter((p) => p.from.toLowerCase() === a.toLowerCase() || p.to.toLowerCase() === a.toLowerCase()).flatMap((p) => [p.from.toLowerCase(), p.to.toLowerCase()])).size - 1;
+  assert.ok(suggestedAddresses(payments, ws.inForce, 5).every((s) => count(busiest) >= s.counterparties));
+  const real = new Set(payments.map((p) => `${p.from.toLowerCase()}>${p.to.toLowerCase()}`));
+  for (const e of two.edges) assert.ok(real.has(`${e.from.toLowerCase()}>${e.to.toLowerCase()}`), 'every edge is a demo payment');
+  for (const n of two.nodes.filter((x) => x.hop === 2)) assert.ok(two.nodes.some((m) => m.hop === 1 && m.address === n.parent));
+  assert.ok(two.hidden >= 0 && two.totalCounterparties === two.nodes.length + two.hidden);
+  const lay = layoutGraph(two, 900);
+  assert.equal(lay.pos.length, two.nodes.length);
+  assert.ok(lay.pos.every((p) => p.x >= 0 && p.x <= 900 && p.y >= 0 && p.y <= lay.height));
+  assert.ok(layoutGraph(buildGraph(payments, busiest, ws.inForce, 3, 1), 900).height <= 320, 'a small graph gets a small canvas');
+  const profile = addressProfile(payments, busiest, ws.inForce);
+  assert.equal(profile.counterparties, count(busiest));
+  assert.ok(profile.first <= profile.last && profile.paymentsIn + profile.paymentsOut > 0);
+});
+
+test('graph: listed addresses seen in the history get several counterparties', async () => {
+  const { ws } = await fresh();
+  const payments = collectPayments(ws, tapeOf(ws));
+  const listed = [...new Set(ws.txs.map((t) => t.address))].filter((a) => ws.inForce.byAddress.has(a.toLowerCase()));
+  assert.ok(listed.length > 0);
+  for (const a of listed) assert.ok(addressProfile(payments, a, ws.inForce).counterparties >= 4, a);
 });
