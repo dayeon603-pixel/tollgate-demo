@@ -1,5 +1,6 @@
 /** Lists (versions, update with lookback preview, diff) and Monitoring (watchlist). */
 import { card, clear, copyButton, dataTable, empty, field, h, icon, kv, mono, money, select, shortAddr, stamp, statusChip } from './dom.js';
+import { zoneName } from './dom.js';
 import { diffVersions } from './lists.js';
 import { actorName } from './describe.js';
 import { MAX_LABEL_CHARS } from './engine.js';
@@ -43,7 +44,7 @@ export function renderLists(ctx, root) {
       { label: 'Addresses', num: true, render: (v) => v.addressCount },
       { label: 'Digest (SHA-256)', render: (v) => mono(`${v.digest.slice(0, 16)}…`) },
       { label: 'Published', render: (v) => (v.real ? v.publishDate : 'demo') },
-      { label: 'In force from (UTC)', render: (v) => (hist(v) ? stamp(hist(v).from) : '') },
+      { label: `In force from (${zoneName()})`, render: (v) => (hist(v) ? stamp(hist(v).from) : '') },
       { label: 'Source', cls: 'wrap', render: (v) => (v.real ? 'Bundled OFAC snapshot' : 'Demo reconstruction') },
     ],
   })));
@@ -67,7 +68,7 @@ export function renderLists(ctx, root) {
           { label: 'Address', render: (x) => mono(shortAddr(x.address)) },
           { label: 'Earlier payments', num: true, render: (x) => x.txs.length },
           { label: 'Amount', num: true, render: (x) => money(x.txs.reduce((a, t) => a + (t.amountUsd ?? 0), 0)) },
-          { label: 'First screened (UTC)', render: (x) => stamp(x.txs[0].ts) },
+          { label: `First screened (${zoneName()})`, render: (x) => stamp(x.txs[0].ts) },
           { label: 'Name on the list', cls: 'wrap', render: (x) => x.entries[0].name },
         ],
       }) : null,
@@ -90,7 +91,7 @@ export function renderLists(ctx, root) {
     root.append(card('Lookback history', { id: 'ls-lookbacks', sub: 'What each update changed for earlier screenings' }, dataTable({
       caption: 'Lookback history', rows: [...ws.lookbacks].reverse(), rowKey: (l) => l.id,
       cols: [
-        { label: 'Run', render: (l) => l.id }, { label: 'Time (UTC)', render: (l) => stamp(l.ts) },
+        { label: 'Run', render: (l) => l.id }, { label: `Time (${zoneName()})`, render: (l) => stamp(l.ts) },
         { label: 'Update', render: (l) => `${l.fromId ?? 'none'} to ${l.toId}` },
         { label: 'Added', num: true, render: (l) => l.added.length }, { label: 'Removed', num: true, render: (l) => l.removed.length },
         { label: 'Earlier payments screened', num: true, render: (l) => l.screenedCount },
@@ -166,7 +167,7 @@ export function renderMonitoring(ctx, root) {
       cols: [
         { label: 'Label', render: (w) => w.label }, { label: 'Address', render: (w) => h('span', { class: 'mono', title: w.address, text: shortAddr(w.address) }) },
         { label: 'Status', render: (w) => h('span', { class: `chip ${w.status === 'hit' ? 'chip--bad' : 'chip--good'}`, text: w.status === 'hit' ? 'Hit on the list' : 'Clear' }) },
-        { label: 'Last checked (UTC)', render: (w) => `${stamp(w.checkedAt)} on ${w.versionId}` },
+        { label: `Last checked (${zoneName()})`, render: (w) => `${stamp(w.checkedAt)} on ${w.versionId}` },
         { label: 'Added by', render: (w) => actorName(ws, w.addedBy) },
         { label: 'Receipt', render: (w) => h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(w.lastReceiptId) } }, w.lastReceiptId.replace('rcpt:', '')) },
         { label: '', render: (w) => h('button', { type: 'button', class: 'btn', disabled: !can, 'aria-label': `Remove ${w.label}`, on: { click: () => ctx.run({ op: 'watchRemove', actor: ctx.userId, address: w.address }) } }, 'Remove') },

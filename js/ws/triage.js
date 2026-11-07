@@ -4,6 +4,7 @@
  * so permissions, notes and four-eyes apply to every row.
  */
 import { money, stamp } from './dom.js';
+import { zoneName } from './dom.js';
 import { isFinal } from './engine.js';
 
 export const HOUR = 3_600_000;
@@ -93,7 +94,7 @@ export function caseSummary(ws, alert) {
   const tx = alert.txIds.map((id) => ws.txById.get(id)).filter(Boolean);
   const first = tx[0];
   if (first) {
-    lines.push(`Payment ${first.id}${tx.length > 1 ? ` and ${tx.length - 1} more` : ''}: ${money(alert.amountUsd)}${tx.length > 1 ? ' in total' : ''}, screened ${stamp(first.ts)} UTC.`);
+    lines.push(`Payment ${first.id}${tx.length > 1 ? ` and ${tx.length - 1} more` : ''}: ${money(alert.amountUsd)}${tx.length > 1 ? ' in total' : ''}, screened ${stamp(first.ts)} ${zoneName()}.`);
   }
   lines.push(`List: ${version.label} (${version.real ? 'OFAC snapshot' : 'demo version'}), digest ${version.digest.slice(0, 12)}.`);
   if (alert.entries.length) {

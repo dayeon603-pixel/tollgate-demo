@@ -1,5 +1,7 @@
 /** Time and cost: what this browser measured, a calculator on the visitor's own numbers, and a procedural comparison. */
 import { card, clear, field, h } from './dom.js';
+import { formatClock, formatNumber } from './settings.js';
+import { zoneName } from './dom.js';
 import { buildPack, verifyPack } from './evidence.js';
 import { matchIn } from './lists.js';
 import { AUDIT_QUESTION, BEFORE_STEPS, ESTIMATE_NOTE, estimate, FORMULAS, formatMs, INPUTS, WITH_STEPS } from './timecost.js';
@@ -7,7 +9,7 @@ import { AUDIT_QUESTION, BEFORE_STEPS, ESTIMATE_NOTE, estimate, FORMULAS, format
 const st = { values: {} };
 const BATCH_SIZE = 1000;
 
-const fmt = (n) => Math.round(n).toLocaleString('en-US');
+const fmt = (n) => formatNumber(Math.round(n));
 
 export function renderValue(ctx, root) {
   const { ws } = ctx;
@@ -21,10 +23,10 @@ export function renderValue(ctx, root) {
     if (!items.length) { body.append(h('p', { class: 'card__note', text: 'Nothing measured yet in this session. Press Measure now, or use the app and the timings will appear here.' })); return; }
     body.append(h('div', { class: 'tablewrap' }, h('table', { class: 'grid', id: 'tc-table' },
       h('caption', { class: 'sr', text: 'Timings measured in this browser' }),
-      h('thead', {}, h('tr', {}, ['What', 'Took', 'Covering', 'When (UTC)'].map((t, i) => h('th', { scope: 'col', class: i === 1 ? 'num' : '' }, t)))),
+      h('thead', {}, h('tr', {}, ['What', 'Took', 'Covering', `When (${zoneName()})`].map((t, i) => h('th', { scope: 'col', class: i === 1 ? 'num' : '' }, t)))),
       h('tbody', {}, items.map((m) => h('tr', {}, h('td', { 'data-label': 'What', text: m.label }), h('td', { 'data-label': 'Took', class: 'num mono', text: formatMs(m.ms) }),
         h('td', { 'data-label': 'Covering', text: Object.entries(m.detail).map(([k, v]) => `${v} ${k.replace('_', ' ')}`).join(', ') }),
-        h('td', { 'data-label': 'When (UTC)', class: 'mono', text: m.at.slice(11, 19) })))))));
+        h('td', { 'data-label': `When (${zoneName()})`, class: 'mono', text: formatClock(m.at) })))))));
   };
   const measureNow = async () => {
     const m = ctx.measure;

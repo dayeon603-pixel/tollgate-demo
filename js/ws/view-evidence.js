@@ -1,5 +1,6 @@
 /** Exam and audit evidence packs: build, download (JSON and printable HTML), and check a pack offline. */
 import { card, clear, dataTable, download, empty, field, h, icon, kv, mono, select, stamp } from './dom.js';
+import { zoneName } from './dom.js';
 import { buildPack, CLI_SNIPPET, packHtml, VERIFY_STEPS, verifyPack } from './evidence.js';
 import { dayKey, DAY_MS } from './util.js';
 
@@ -114,7 +115,7 @@ export function renderEvidence(ctx, root) {
     caption: 'Exports', rows: [...ws.exports].reverse(), rowKey: (e) => e.receiptId,
     empty: empty('Nothing has been exported yet.'),
     cols: [
-      { label: 'Time (UTC)', render: (e) => stamp(e.ts) }, { label: 'By', render: (e) => ws.user(e.actor)?.name ?? e.actor },
+      { label: `Time (${zoneName()})`, render: (e) => stamp(e.ts) }, { label: 'By', render: (e) => ws.user(e.actor)?.name ?? e.actor },
       { label: 'Scope', render: (e) => (e.scope.type === 'range' ? `${e.scope.from} to ${e.scope.to}` : e.scope.type === 'case' ? e.scope.alertId : 'Whole ledger') },
       { label: 'Pack digest', render: (e) => mono(`${e.packDigest.slice(0, 16)}…`) },
       { label: 'Receipt', render: (e) => h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(e.receiptId) } }, e.receiptId.replace('rcpt:', '')) },

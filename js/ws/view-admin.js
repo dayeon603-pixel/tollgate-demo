@@ -1,5 +1,6 @@
 /** Policy and roles (admin changes are receipted) and the API examples page (static). */
 import { card, clear, copyButton, dataTable, empty, field, h, kv, mono, select, stamp } from './dom.js';
+import { zoneName } from './dom.js';
 import { actorName } from './describe.js';
 import { PERMISSION_LABELS, PERMISSIONS, RULE_LABELS, ROLES } from './engine.js';
 
@@ -79,7 +80,7 @@ export function renderPolicy(ctx, root) {
     caption: 'Policy and role changes', rows: changes, rowKey: (e) => e.receipt.receipt_id, onOpen: (e) => ctx.openReceipt(e.receipt.receipt_id),
     empty: empty('No changes yet.'),
     cols: [
-      { label: 'Time (UTC)', render: (e) => stamp(e.receipt.action.requested_at) },
+      { label: `Time (${zoneName()})`, render: (e) => stamp(e.receipt.action.requested_at) },
       { label: 'Change', cls: 'wrap', render: (e) => { const a = e.receipt.action.params; return a.setting ? `${a.setting}: ${a.from} to ${a.to}` : `${a.user_id}: ${a.from} to ${a.to}`; } },
       { label: 'By', render: (e) => actorName(ws, e.receipt.action.params.actor) },
       { label: 'Receipt', open: true, render: (e) => e.receipt.receipt_id.replace('rcpt:', '') },

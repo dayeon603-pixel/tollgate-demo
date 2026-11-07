@@ -1,5 +1,7 @@
 /** Live view: a synthetic payment stream screened through the real engine, with charts that update in place. */
 import { card, clear, h, icon, money, outcomeTag, segmented, shortAddr, svg } from './dom.js';
+import { zoneName } from './dom.js';
+import { formatClock } from './settings.js';
 import { compact, sparkline, timeChart } from './live-chart.js';
 import { BASE_RATE, CHAIN_LABEL, LIVE_MAX_RECEIPTS, SPEEDS } from './stream.js';
 import { HOUR_MS } from './util.js';
@@ -13,8 +15,8 @@ const VALUE_POINTS = 30;
 const SPARK_S = 40;
 const MIX_W = 100;
 
-const hms = (t) => new Date(t).toISOString().slice(11, 19);
-const hm = (t) => new Date(t).toISOString().slice(11, 16);
+const hms = (t) => formatClock(t);
+const hm = (t) => formatClock(t).slice(0, 5);
 
 /** Alerts opened per UTC hour for the last 24 hours: workspace alerts plus live flags. */
 export function alertsPerHour(ws, tape, endMs, hours = 24) {
@@ -69,10 +71,10 @@ export function renderLive(ctx, root) {
   // ---- charts ------------------------------------------------------------------------------
   const throughput = timeChart({ id: 'c-thru', title: 'Screenings per second over the last 2 minutes, by decision', mode: 'area', stacked: true, series: [
     { key: 'allow', label: 'Allow', cls: 'allow' }, { key: 'hold', label: 'Hold', cls: 'hold', dash: true }, { key: 'block', label: 'Hit', cls: 'block' }],
-  xFmt: hms, tableLabel: 'Time (UTC)' });
+  xFmt: hms, tableLabel: `Time (${zoneName()})` });
   const msFmt = (v) => (v === null || v === undefined ? 'no data' : `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`);
   const latencyChart = timeChart({ id: 'c-lat', title: 'Screening latency p50 and p95 in milliseconds, measured in this browser', mode: 'line', series: [
-    { key: 'p50', label: 'p50', cls: 'p50' }, { key: 'p95', label: 'p95', cls: 'p95', dash: true }], xFmt: hms, yFmt: msFmt, tableLabel: 'Time (UTC)' });
+    { key: 'p50', label: 'p50', cls: 'p50' }, { key: 'p95', label: 'p95', cls: 'p95', dash: true }], xFmt: hms, yFmt: msFmt, tableLabel: `Time (${zoneName()})` });
   const valueChart = timeChart({ id: 'c-val', title: 'Value screened in synthetic US dollars per 10 seconds', mode: 'bars', stacked: true, series: [{ key: 'usd', label: 'Value', cls: 'value' }],
     xFmt: hms, yFmt: (v) => `$${compact(v)}`, tableLabel: 'Window ending (UTC)' });
   const alertsChart = timeChart({ id: 'c-alerts', title: 'Alerts opened per hour over the last 24 hours: workspace alerts and stream flags', mode: 'bars', stacked: true, series: [

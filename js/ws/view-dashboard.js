@@ -1,5 +1,6 @@
 /** Dashboard: volume, outcomes, open work, receipts and the list in force. All volumes are synthetic. */
 import { card, clear, h, kv, mono, money, stamp } from './dom.js';
+import { formatDate } from './settings.js';
 import { chartTable, hbars, legend, SERIES, stackedBars } from './charts.js';
 import { sparkline } from './live-chart.js';
 import { describe } from './describe.js';
@@ -33,7 +34,7 @@ export function renderDashboard(ctx, root) {
       kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.block), cls: 'block' }),
       kpi('Open alerts', s.openAlerts, `${s.awaitingApproval} awaiting approval`, 'alerts', ctx),
       kpi('Receipts issued', s.receipts, `in ${s.segments} ledger segments`, 'explorer', ctx),
-      kpi('List in force', s.listVersion ? s.listVersion.label : 'none', `${s.listVersion?.real ? 'OFAC snapshot' : 'demo version'}${s.listChangedAt ? `, since ${stamp(s.listChangedAt).slice(0, 10)}` : ''}`, 'lists', ctx),
+      kpi('List in force', s.listVersion ? s.listVersion.label : 'none', `${s.listVersion?.real ? 'OFAC snapshot' : 'demo version'}${s.listChangedAt ? `, since ${formatDate(s.listChangedAt)}` : ''}`, 'lists', ctx),
     ),
   );
 

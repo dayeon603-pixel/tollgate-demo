@@ -1,9 +1,12 @@
 /** Receipt explorer (search, filter, detail with the real verifier) and the activity log. */
 import { card, clear, copyButton, dataTable, empty, field, h, icon, kv, mono, outcomeTag, pager, select, shortAddr, shortHash, stamp } from './dom.js';
+import { pageSize } from './settings.js';
+import { zoneName } from './dom.js';
 import { actorName, describe, TYPE_GROUPS, TYPE_LABELS } from './describe.js';
 import { dayKey } from './util.js';
 
-const PAGE = 40;
+const PAGE_DEFAULT = 40;
+const pageLen = () => pageSize(PAGE_DEFAULT);
 const st = { q: '', type: 'all', decision: 'all', version: 'all', from: '', to: '', page: 0 };
 const activity = { group: 'all', actor: 'all', page: 0 };
 const CHECK_LABELS = { signature: 'Signature matches the signed decision', signer: 'Signer is the demo key', binding: 'Details match the signed fingerprint', labels: 'Labels match the signed decision', hash: 'Own hash matches contents', chain: 'Links to the receipt before' };
@@ -56,21 +59,21 @@ export function renderExplorer(ctx, root) {
   const foot = h('div', { class: 'card__foot' });
   const draw = () => {
     const rows = filtered(ws);
-    if (st.page * PAGE >= rows.length) st.page = 0;
+    if (st.page * pageLen() >= rows.length) st.page = 0;
     clear(host);
     host.append(dataTable({
-      caption: 'Receipts', rows: rows.slice(st.page * PAGE, (st.page + 1) * PAGE), rowKey: (e) => e.receipt.receipt_id, onOpen: (e) => ctx.openReceipt(e.receipt.receipt_id),
+      caption: 'Receipts', rows: rows.slice(st.page * pageLen(), (st.page + 1) * pageLen()), rowKey: (e) => e.receipt.receipt_id, onOpen: (e) => ctx.openReceipt(e.receipt.receipt_id),
       empty: empty('No receipts match.', 'Try a shorter search or clear a filter.'),
       cols: [
         { label: 'Receipt', open: true, render: (e) => e.receipt.receipt_id.replace('rcpt:', '') },
-        { label: 'Time (UTC)', render: (e) => stamp(e.receipt.action.requested_at) },
+        { label: `Time (${zoneName()})`, render: (e) => stamp(e.receipt.action.requested_at) },
         { label: 'Type', render: (e) => TYPE_LABELS[e.receipt.action.type] ?? e.receipt.action.type },
         { label: 'Subject', cls: 'col-addr', render: (e) => { const p = e.receipt.action.params; return p.beneficiary_address ? h('span', { class: 'mono', title: p.beneficiary_address, text: shortAddr(p.beneficiary_address) }) : (p.alert_id ?? p.setting ?? p.segment_id ?? ''); } },
         { label: 'Decision', render: (e) => (['ALLOW', 'DENY', 'HOLD'].includes(e.receipt.verdict.decision) ? outcomeTag({ ALLOW: 'ALLOW', DENY: 'BLOCK', HOLD: 'HOLD' }[e.receipt.verdict.decision]) : h('span', { class: 'decision decision--other', text: e.receipt.verdict.decision })) },
         { label: 'List', render: (e) => e.versionId },
         { label: 'Segment', render: (e) => `${ws.ledger.segments[e.segment].id} #${e.receipt.seq}` },
       ],
-    }), pager({ page: st.page, size: PAGE, total: rows.length, onChange: (p) => { st.page = p; draw(); } }));
+    }), pager({ page: st.page, size: pageLen(), total: rows.length, onChange: (p) => { st.page = p; draw(); } }));
     foot.textContent = `${rows.length} of ${ws.ledger.size} receipts match.`;
   };
   const verifyHost = h('div', { role: 'status', 'aria-live': 'polite' });
@@ -110,7 +113,7 @@ export function receiptView(ctx, receiptId) {
   body.append(
     h('p', { class: 'receipt__what', text: `${d.actor}: ${d.text}` }),
     kv([
-      ['Type', TYPE_LABELS[receipt.action.type] ?? receipt.action.type], ['Time (UTC)', receipt.action.requested_at], ['Decision', receipt.verdict.decision],
+      ['Type', TYPE_LABELS[receipt.action.type] ?? receipt.action.type], [`Time (${zoneName()})`, receipt.action.requested_at], ['Decision', receipt.verdict.decision],
       ['List version', `${version.label} (${version.real ? 'OFAC snapshot' : 'demo reconstruction'}), digest ${shortHash(version.digest)}`],
       ['Segment', `${segment.id}, position ${receipt.seq} of ${segment.chain.receipts.length}`],
     ]),
@@ -170,7 +173,7 @@ export function renderActivity(ctx, root) {
       caption: 'Activity log', rows: rows.slice(activity.page * 40, (activity.page + 1) * 40), rowKey: (e) => e.receipt.receipt_id, onOpen: (e) => ctx.openReceipt(e.receipt.receipt_id),
       empty: empty('No activity matches.'),
       cols: [
-        { label: 'Time (UTC)', render: (e) => stamp(e.receipt.action.requested_at) },
+        { label: `Time (${zoneName()})`, render: (e) => stamp(e.receipt.action.requested_at) },
         { label: 'Who', render: (e) => describe(ws, e).actor },
         { label: 'What', cls: 'wrap', render: (e) => describe(ws, e).text },
         { label: 'Receipt', open: true, render: (e) => e.receipt.receipt_id.replace('rcpt:', '') },

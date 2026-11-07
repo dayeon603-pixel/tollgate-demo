@@ -29,12 +29,15 @@ import { initPalette } from './palette-ui.js';
 import { Measurements } from './timecost.js';
 import { cleanTargets, DEFAULT_SLA_HOURS, normalizeView, upsertView } from './triage.js';
 import { WS_ROUTES } from './workspace-routes.js';
+import { renderSettings } from './view-settings.js';
+import { applySettings, getSettings, loadSettings, setSettings, subscribeSettings } from './settings.js';
+import { hitFlash } from './hits.js';
 
 export { WS_ROUTES };
 export const LIST_URL = 'data/ofac_crypto_addresses.json';
 const RENDERERS = {
   dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph, flow: renderFlow,
-  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, value: renderValue, policy: renderPolicy, activity: renderActivity, api: renderApi,
+  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, value: renderValue, policy: renderPolicy, activity: renderActivity, api: renderApi, settings: renderSettings,
 };
 const TOAST_MS = 6000;
 const RESET_CONFIRM_MS = 5000;
@@ -42,7 +45,7 @@ const $ = (id) => document.getElementById(id);
 
 export async function initWorkspace({ openInVerifier }) {
   const roots = Object.fromEntries(Object.keys(WS_ROUTES).map((route) => [route, $(`ws-view-${route}`)]));
-  const prefs = { user: 'analyst-a', theme: null, views: [], sla: { ...DEFAULT_SLA_HOURS }, ...(readJson(PREFS_KEY) ?? {}) };
+  const prefs = { user: 'analyst-a', views: [], sla: { ...DEFAULT_SLA_HOURS }, ...(readJson(PREFS_KEY) ?? {}) };
   prefs.views = (Array.isArray(prefs.views) ? prefs.views : []).map(normalizeView).filter(Boolean);
   prefs.sla = cleanTargets(prefs.sla);
   const measure = new Measurements();
@@ -59,12 +62,11 @@ export async function initWorkspace({ openInVerifier }) {
   let storageWarned = false;
 
   const savePrefs = () => writeJson(PREFS_KEY, prefs);
-  const applyTheme = () => {
-    const theme = prefs.theme ?? 'dark';
-    document.documentElement.dataset.theme = theme;
-    return theme;
-  };
+  // Theme and the other appearance choices live in settings.js, the single source for them.
+  loadSettings(prefs.theme ?? null);
+  const applyTheme = () => applySettings(getSettings());
   applyTheme();
+  subscribeSettings(() => { applyTheme(); if (ready) { drawBar(); ctx.refresh(); } });
 
   // ---- messages --------------------------------------------------------------------------
   const toastBox = h('div', { id: 'ws-toast', class: 'toast', role: 'status', 'aria-live': 'polite' });
@@ -166,6 +168,16 @@ export async function initWorkspace({ openInVerifier }) {
       if (dlg.open) drawCurrent();
     },
     refreshChrome: () => { drawBar(); statusUpdate(); },
+    /** The saved op log, as the browser holds it, for the settings export. */
+    exportState: () => readJson(STATE_KEY) ?? snapshot(ws, anchor),
+    async importState(state, settings) {
+      if (state) writeJson(STATE_KEY, state); else removeKey(STATE_KEY);
+      if (settings) setSettings(settings);
+      dlg.close();
+      ready = false;
+      await boot();
+    },
+    confirmReset: () => { if (!resetArmed) { resetArmed = true; drawBar(); toast('Press Reset demo again within a few seconds to erase your changes.'); clearTimeout(resetTimer); resetTimer = setTimeout(() => { resetArmed = false; drawBar(); }, RESET_CONFIRM_MS); } },
   };
 
   // ---- chrome ----------------------------------------------------------------------------
@@ -181,7 +193,8 @@ export async function initWorkspace({ openInVerifier }) {
     const userSelect = select('ws-user', ws.users.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` })), prefs.user, (value) => { prefs.user = value; savePrefs(); ctx.refresh(); });
     userSelect.classList.add('select--bar');
     const theme = document.documentElement.dataset.theme;
-    const themeButton = h('button', { type: 'button', class: 'iconbtn', 'aria-label': theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', title: 'Theme', on: { click: () => { prefs.theme = theme === 'dark' ? 'light' : 'dark'; savePrefs(); applyTheme(); drawBar(); } } }, icon(theme === 'dark' ? 'sun' : 'moon'));
+    const themeButton = h('button', { type: 'button', class: 'iconbtn', id: 'ws-theme', 'aria-label': theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', title: 'Theme', on: { click: () => toggleTheme() } }, icon(theme === 'dark' ? 'sun' : 'moon'));
+    const gear = h('a', { class: 'iconbtn', id: 'ws-settings', href: '#settings', 'aria-label': 'Settings', title: 'Settings' }, icon('gear'));
     const reset = h('button', { type: 'button', class: 'btn', on: { click: () => {
       if (!resetArmed) {
         resetArmed = true;
@@ -200,7 +213,7 @@ export async function initWorkspace({ openInVerifier }) {
       h('div', { class: 'wsbar__right' },
         h('span', { class: 'wsbar__list', title: `Digest ${version.digest}` }, `List in force: ${version.label}`, ws.pendingVersion ? h('a', { href: '#lists', class: 'wsbar__update', text: 'update available' }) : null),
         h('button', { type: 'button', class: 'btn btn--ghost', id: 'ws-palette-open', 'aria-keyshortcuts': 'Control+K Meta+K', on: { click: () => palette.open() } }, icon('search'), 'Search', h('kbd', { class: 'kbd', text: navigator.platform?.includes('Mac') ? '\u2318K' : 'Ctrl K' })),
-        h('label', { class: 'wsbar__user' }, h('span', { text: 'Acting as' }), userSelect), themeButton, reset));
+        h('label', { class: 'wsbar__user' }, h('span', { text: 'Acting as' }), userSelect), themeButton, gear, reset));
   }
 
   async function resetDemo() {
@@ -213,7 +226,7 @@ export async function initWorkspace({ openInVerifier }) {
 
   // ---- status bar and command palette ----------------------------------------------------
   statusUpdate = buildStatusBar(ctx, $('ws-status'));
-  const toggleTheme = () => { prefs.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; savePrefs(); applyTheme(); drawBar(); };
+  function toggleTheme() { setSettings({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); }
   const palette = initPalette(ctx, {
     actions: [
       { id: 'theme', title: 'Switch between dark and light theme', keywords: 'theme dark light' },
@@ -258,6 +271,9 @@ export async function initWorkspace({ openInVerifier }) {
       live?.dispose();
       live = createLive(ctx);
       live.bar = statusUpdate;
+      live.runner.setSpeed(getSettings().liveSpeed);
+      live.onHits = (records) => hitFlash(records, getSettings());
+      if (getSettings().liveAutoStart) live.runner.start();
       ctx.persist();
       if (built.replayError && usable) toast('Your saved changes could not be restored, so the demo started fresh.', 'bad');
     } catch (error) {
@@ -273,7 +289,7 @@ export async function initWorkspace({ openInVerifier }) {
 
   // ---- keyboard --------------------------------------------------------------------------
   document.addEventListener('keydown', (event) => {
-    if (!route || !ready || dlg.open || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!route || !ready || dlg.open || event.metaKey || event.ctrlKey || event.altKey || !getSettings().singleKeyShortcuts) return;
     const tag = document.activeElement?.tagName;
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
     const root = roots[route];
@@ -288,7 +304,7 @@ export async function initWorkspace({ openInVerifier }) {
       rows[next].focus();
     }
   });
-  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (!prefs.theme) { applyTheme(); drawBar(); } });
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (getSettings().theme === 'system') { applyTheme(); drawBar(); } });
 
   const startup = boot();
   return { show, ready: startup };

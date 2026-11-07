@@ -1,12 +1,15 @@
 /** Alert queue and case view. Every action here goes through the engine and ends up as a signed receipt. */
 import { append, card, clear, copyButton, dataTable, empty, field, h, icon, KIND_LABELS, kv, money, mono, pager, segmented, select, shortAddr, stamp, statusChip } from './dom.js';
+import { pageSize } from './settings.js';
+import { zoneName } from './dom.js';
 import { actorName, ACTION_LABELS } from './describe.js';
 import { isFinal, isOpenWork, MAX_NOTE_CHARS, MIN_NOTE_CHARS, STATUSES } from './engine.js';
 import { matchIn } from './lists.js';
 import { ageLabel } from './metrics.js';
 import { applyBulk, caseSummary, DEFAULT_SLA_HOURS, planBulk, slaLabel, slaState } from './triage.js';
 
-const PAGE = 25;
+const PAGE_DEFAULT = 25;
+const pageLen = () => pageSize(PAGE_DEFAULT);
 const st = { status: 'work', kind: 'all', assignee: 'any', q: '', sort: 'newest', page: 0, selected: new Set(), message: '', viewName: '' };
 const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
 
@@ -41,8 +44,8 @@ export function renderAlerts(ctx, root) {
   clear(root);
   const count = (fn) => ws.alerts.filter(fn).length;
   const rows = applyFilters(ctx);
-  if (st.page * PAGE >= rows.length) st.page = 0;
-  const pageRows = rows.slice(st.page * PAGE, (st.page + 1) * PAGE);
+  if (st.page * pageLen() >= rows.length) st.page = 0;
+  const pageRows = rows.slice(st.page * pageLen(), (st.page + 1) * pageLen());
 
   const statusFilter = segmented({
     label: 'Status', value: st.status,
@@ -65,7 +68,7 @@ export function renderAlerts(ctx, root) {
   const tableHost = h('div', { id: 'al-table' });
   const drawTable = () => {
     const all = applyFilters(ctx);
-    const shown = all.slice(st.page * PAGE, (st.page + 1) * PAGE);
+    const shown = all.slice(st.page * pageLen(), (st.page + 1) * pageLen());
     clear(tableHost);
     tableHost.append(dataTable({
       caption: 'Alerts', rows: shown, rowKey: (a) => a.id, onOpen: (a) => ctx.openAlert(a.id),
@@ -82,7 +85,7 @@ export function renderAlerts(ctx, root) {
         { label: 'Owner', render: (a) => (a.assignee ? actorName(ws, a.assignee) : h('span', { class: 'muted', text: 'Unassigned' })) },
         { label: 'Priority', render: (a) => a.priority },
       ],
-    }), pager({ page: st.page, size: PAGE, total: all.length, onChange: (p) => { st.page = p; drawTable(); } }));
+    }), pager({ page: st.page, size: pageLen(), total: all.length, onChange: (p) => { st.page = p; drawTable(); } }));
     tableHost.querySelectorAll('tr[data-key]').forEach((tr) => {
       const alert = ws.alertById.get(tr.dataset.key);
       tr.dataset.sla = slaState(alert, ctx.now().getTime(), ctx.sla).state;
@@ -166,7 +169,7 @@ export function renderAlerts(ctx, root) {
       bulkHost, tableHost, foot),
     slaBox,
   );
-  void pageRows;
+  void pageLen;
   drawTable();
 }
 
@@ -192,7 +195,7 @@ export function caseView(ctx, alertId) {
     ['Kind', KIND_LABELS[alert.kind] + (alert.rule ? ` (${alert.rule.replace('_', ' ')})` : '')],
     ['Priority', alert.priority],
     ['Owner', alert.assignee ? actorName(ws, alert.assignee) : 'Unassigned'],
-    ['Opened', `${stamp(alert.createdAt)} UTC`],
+    ['Opened', `${stamp(alert.createdAt)} ${zoneName()}`],
     ['SLA', (() => { const sl = slaState(alert, ctx.now().getTime(), ctx.sla); return h('span', { class: `sla sla--${sl.state}`, 'data-sla': sl.state }, sl.state === 'closed' ? `closed (target ${sl.targetH}h)` : `${slaLabel(sl)} (target ${sl.targetH}h)`); })()],
     ['Address', h('span', { class: 'field__text' }, mono(alert.address), copyButton(alert.address, 'address'))],
     alert.txIds.length ? ['Amount', money(alert.amountUsd) + (alert.txIds.length > 1 ? ` across ${alert.txIds.length} payments` : '')] : null,
@@ -214,7 +217,7 @@ export function caseView(ctx, alertId) {
     body.append(h('h3', { text: 'Payments' }), dataTable({
       caption: 'Payments', rows: alert.txIds.map((id) => ws.txById.get(id)), rowKey: (t) => t.id,
       cols: [
-        { label: 'Payment', render: (t) => t.id }, { label: 'Time (UTC)', render: (t) => stamp(t.ts) },
+        { label: 'Payment', render: (t) => t.id }, { label: `Time (${zoneName()})`, render: (t) => stamp(t.ts) },
         { label: 'Amount', num: true, render: (t) => money(t.amountUsd) },
         { label: 'Screened as', render: (t) => `${t.outcome === 'BLOCK' ? 'Hit' : t.outcome === 'HOLD' ? 'Hold' : 'Allow'} on ${t.versionId}` },
         { label: 'Receipt', render: (t) => h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(t.receiptId) } }, t.receiptId.replace('rcpt:', '')) },
@@ -246,7 +249,7 @@ export function caseView(ctx, alertId) {
     if (fourEyes) actions.append(why('Four-eyes: clearing needs a second person. You propose, a different approver or admin approves.'));
     if (alert.pending) {
       actions.append(h('div', { class: 'pending', role: 'group', 'aria-label': 'Clearance awaiting approval' },
-        h('p', {}, h('strong', { text: `${actorName(ws, alert.pending.by)} proposed clearing this alert` }), ` on ${stamp(alert.pending.at)} UTC.`),
+        h('p', {}, h('strong', { text: `${actorName(ws, alert.pending.by)} proposed clearing this alert` }), ` on ${stamp(alert.pending.at)} ${zoneName()}.`),
         h('p', { class: 'pending__note', text: `"${alert.pending.note}"` }),
         h('div', { class: 'btnrow' }, button('approve_clear', 'Approve clearance', { primary: true }), button('reject_clear', 'Reject')),
         can.approve_clear ? why(can.approve_clear) : null));
@@ -269,7 +272,7 @@ export function caseView(ctx, alertId) {
     h('div', {}, h('p', { class: 'timeline__head' }, h('strong', { text: ACTION_LABELS[t.action] ?? t.action }), ` by ${actorName(ws, t.actor)}`, t.from && t.from !== t.to ? ` (${t.from.replace('_', ' ')} to ${t.to.replace('_', ' ')})` : ''),
       t.assignee !== undefined ? h('p', { class: 'timeline__note', text: `Owner: ${t.assignee ? actorName(ws, t.assignee) : 'none'}` }) : null,
       t.note ? h('p', { class: 'timeline__note', text: t.note }) : null,
-      h('p', { class: 'timeline__meta' }, `${stamp(t.ts)} UTC · `, h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(t.receiptId) } }, `receipt ${t.receiptId.replace('rcpt:', '')}`)))))));
+      h('p', { class: 'timeline__meta' }, `${stamp(t.ts)} ${zoneName()} · `, h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(t.receiptId) } }, `receipt ${t.receiptId.replace('rcpt:', '')}`)))))));
 
   body.append(h('div', { class: 'btnrow' }, h('button', { type: 'button', class: 'btn', id: 'case-evidence', on: { click: () => ctx.go('evidence', { case: alert.id, auto: true }) } }, icon('file'), 'Evidence for this case')));
   void append;

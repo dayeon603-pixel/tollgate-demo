@@ -3,7 +3,13 @@
  * never innerHTML, because notes, labels and CSV cells are user input.
  */
 
+import { copyText, formatAddress, formatMoney, formatStamp, getSettings } from './settings.js';
+
+/** Name of the time zone the tables show, for column headings and notes. */
+export const zoneName = () => (getSettings().timeZone === 'local' ? 'local time' : 'UTC');
+
 export const WS_ICONS = {
+  gear: 'M6.7 1.8h2.6l.4 1.7 1.2.7 1.6-.6 1.3 2.2-1.2 1.2v1.4l1.2 1.2-1.3 2.2-1.6-.6-1.2.7-.4 1.7H6.7l-.4-1.7-1.2-.7-1.6.6-1.3-2.2 1.2-1.2V7.2L2.2 6l1.3-2.2 1.6.6 1.2-.7ZM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
   grid: 'M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z',
   bell: 'M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3L4 11ZM6.5 14h3',
   scan: 'M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3M2.5 8h11',
@@ -74,12 +80,12 @@ export function clear(node) {
 // ---- formatting ------------------------------------------------------------------------
 
 export function money(n) {
-  return n === null || n === undefined ? 'unknown' : `$${Math.round(n).toLocaleString('en-US')}`;
+  return formatMoney(n);
 }
 
 /** "2026-11-06 10:42" in UTC. */
 export function stamp(iso) {
-  return iso ? iso.replace('T', ' ').slice(0, 16) : '';
+  return iso ? formatStamp(iso) : '';
 }
 
 export function shortHash(hex, head = 10, tail = 6) {
@@ -87,7 +93,7 @@ export function shortHash(hex, head = 10, tail = 6) {
 }
 
 export function shortAddr(address) {
-  return address && address.length > 20 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address ?? '';
+  return formatAddress(address ?? '');
 }
 
 export const KIND_LABELS = { hit: 'List hit', hold: 'Policy hold', lookback: 'Lookback hit', watchlist: 'Watchlist hit' };
@@ -114,7 +120,7 @@ export function copyButton(text, label) {
   button.addEventListener('click', async () => {
     let ok = false;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(label === 'address' ? copyText(text) : text);
       ok = true;
     } catch {
       ok = false;

@@ -1,5 +1,6 @@
 /** Terminal-style status bar: list in force, ledger head, receipts today, stream, alerts, UTC clock. */
 import { h } from './dom.js';
+import { formatClock, zoneLabel } from './settings.js';
 import { isOpenWork } from './engine.js';
 import { ageLabel } from './metrics.js';
 import { shortHash } from './dom.js';
@@ -18,6 +19,7 @@ export function buildStatusBar(ctx, host) {
     rate: h('span', { class: 'sb__val mono' }),
     alerts: h('a', { class: 'sb__val mono', href: '#alerts' }),
     clock: h('span', { class: 'sb__val mono' }),
+    clockLabel: h('span', { class: 'sb__label', text: 'UTC' }),
     streamText: h('span', { class: 'sb__streamtext' }),
   };
   const dot = h('span', { class: 'sb__dot', 'aria-hidden': 'true' });
@@ -30,7 +32,7 @@ export function buildStatusBar(ctx, host) {
     cell('STREAM', v.rate, 'Screenings per second over the last 5 seconds'),
     cell('OPEN ALERTS', v.alerts, 'Open and in-progress alerts'),
     h('div', { class: 'sb__spacer' }),
-    cell('UTC', v.clock),
+    h('div', { class: 'sb__cell' }, v.clockLabel, v.clock),
     stream);
 
   let cache = { size: -1, day: '', count: 0 };
@@ -50,7 +52,8 @@ export function buildStatusBar(ctx, host) {
     v.head.textContent = shortHash(ws.ledger.head() ?? '', 6, 4);
     v.today.textContent = String(todayCount(ws, iso.slice(0, 10)));
     v.alerts.textContent = String(ws.alerts.filter(isOpenWork).length);
-    v.clock.textContent = iso.slice(11, 19);
+    v.clock.textContent = formatClock(now);
+    v.clockLabel.textContent = zoneLabel();
     const state = live.runner.state;
     v.rate.textContent = state === 'live' ? `${live.tape.rate(now.getTime()).toFixed(1)}/s` : state === 'paused' ? 'paused' : '0.0/s';
     stream.dataset.state = state;

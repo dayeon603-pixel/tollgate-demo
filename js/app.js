@@ -8,6 +8,12 @@ import { SAMPLE_PUBLIC_KEY, ed25519Available, signedReason, verifyText } from '.
 import { initStart } from './start.js';
 import { contextFragment } from './forms.js';
 import { initWorkspace, WS_ROUTES } from './ws/workspace.js';
+import { PREFS_KEY, readJson } from './ws/persist.js';
+import { applySettings, getSettings, loadSettings } from './ws/settings.js';
+
+// Settings are read before anything draws, so the first paint already has the right theme.
+loadSettings(readJson(PREFS_KEY)?.theme ?? null);
+applySettings();
 import { WS_ICONS } from './ws/dom.js';
 
 const SAMPLE_URL = 'data/sample_receipts.json';
@@ -1151,7 +1157,7 @@ function bindShell() {
     const route = routeFromHash();
     if (route) setRoute(route, { focus: true });
   });
-  setRoute(routeFromHash() ?? 'dashboard');
+  setRoute(routeFromHash() ?? getSettings().landing);
 }
 
 /**

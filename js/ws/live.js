@@ -32,7 +32,7 @@ export function createLive(ctx) {
     },
   };
   live.runner = new LiveRunner(tape, {
-    onTick: (records, ms) => { live.pending.push(...records); live.lastBusyMs = ms; },
+    onTick: (records, ms) => { live.pending.push(...records); live.lastBusyMs = ms; live.onHits?.(records); },
     onState: () => live.frame(),
   });
   const timer = setInterval(() => { if (!document.hidden) live.frame(); }, UI_FRAME_MS);

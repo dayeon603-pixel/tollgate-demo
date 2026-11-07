@@ -1,9 +1,12 @@
 /** Screening: one address at a time, or a pasted or uploaded CSV. Exact address match, nothing fuzzy. */
 import { card, clear, dataTable, download, empty, field, h, icon, mono, money, outcomeTag, pager, segmented, select, shortAddr } from './dom.js';
+import { pageSize } from './settings.js';
+import { stamp, zoneName } from './dom.js';
 import { MAX_BATCH_ROWS, MAX_UPLOAD_BYTES, parseBatch, resultsCsv, runBatch } from './batch.js';
 import { MAX_ADDRESS_LENGTH } from '../workbench.js';
 
-const PAGE = 50;
+const PAGE_DEFAULT = 50;
+const pageLen = () => pageSize(PAGE_DEFAULT);
 const st = { single: null, text: '', parsed: null, results: null, filter: 'all', page: 0, busy: false, progress: '', fileNote: '' };
 
 function exampleCsv(ws) {
@@ -95,7 +98,7 @@ export function renderScreening(ctx, root) {
         onChange: (v) => { st.filter = v; st.page = 0; drawResults(); },
       }), h('button', { type: 'button', class: 'btn', on: { click: () => download('tollgate-batch-results.csv', resultsCsv(all), 'text/csv') } }, icon('download'), 'Export CSV')),
       dataTable({
-        caption: 'Batch results', rows: rows.slice(st.page * PAGE, (st.page + 1) * PAGE), rowKey: (r) => String(r.line),
+        caption: 'Batch results', rows: rows.slice(st.page * pageLen(), (st.page + 1) * pageLen()), rowKey: (r) => String(r.line),
         empty: empty('No rows in this filter.'),
         cols: [
           { label: 'Line', num: true, render: (r) => r.line },
@@ -107,7 +110,7 @@ export function renderScreening(ctx, root) {
           { label: 'Notes', cls: 'wrap', render: (r) => [...r.problems, ...r.notes].join(' ') },
         ],
       }),
-      pager({ page: st.page, size: PAGE, total: rows.length, onChange: (p) => { st.page = p; drawResults(); } }));
+      pager({ page: st.page, size: pageLen(), total: rows.length, onChange: (p) => { st.page = p; drawResults(); } }));
   };
   const run = h('button', { type: 'button', class: 'btn btn--primary', disabled: !canScreen || st.busy }, 'Screen all');
   run.addEventListener('click', async () => {
@@ -146,7 +149,7 @@ export function renderScreening(ctx, root) {
   root.append(card('Latest screenings', { id: 'sc-recent', sub: 'Synthetic feed and your own' }, dataTable({
     caption: 'Latest screenings', rows: recent, rowKey: (t) => t.id, onOpen: (t) => ctx.openReceipt(t.receiptId),
     cols: [
-      { label: 'Payment', open: true, render: (t) => t.id }, { label: 'Time (UTC)', render: (t) => t.ts.replace('T', ' ').slice(0, 16) },
+      { label: 'Payment', open: true, render: (t) => t.id }, { label: `Time (${zoneName()})`, render: (t) => stamp(t.ts) },
       { label: 'Address', render: (t) => mono(shortAddr(t.address)) }, { label: 'Amount', num: true, render: (t) => money(t.amountUsd) },
       { label: 'Result', render: (t) => outcomeTag(t.outcome) }, { label: 'Source', render: (t) => t.source },
     ],
