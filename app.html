@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/workspace.css">
   <link rel="stylesheet" href="css/terminal.css">
+  <link rel="stylesheet" href="css/moat.css">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -25,6 +26,9 @@
       <nav class="side__nav" aria-label="Workspace">
         <a class="navlink" href="#dashboard" data-route="dashboard"><span data-icon="grid"></span>Dashboard</a>
         <a class="navlink" href="#live" data-route="live"><span data-icon="pulse"></span>Live</a>
+        <a class="navlink" href="#network" data-route="network"><span data-icon="net"></span>Network</a>
+        <a class="navlink" href="#archive" data-route="archive"><span data-icon="archive"></span>List archive</a>
+        <a class="navlink" href="#proofgap" data-route="proofgap"><span data-icon="gap"></span>Proof gap</a>
         <a class="navlink" href="#alerts" data-route="alerts"><span data-icon="bell"></span>Alerts<span class="navbadge" id="ws-nav-alerts"></span></a>
         <a class="navlink" href="#screening" data-route="screening"><span data-icon="scan"></span>Screening</a>
         <a class="navlink" href="#monitoring" data-route="monitoring"><span data-icon="eye"></span>Monitoring</a>
@@ -88,6 +92,9 @@
 
           <section class="view" data-view="dashboard" hidden><div class="wsview" id="ws-view-dashboard"></div></section>
           <section class="view" data-view="live" hidden><div class="wsview" id="ws-view-live"></div></section>
+          <section class="view" data-view="network" hidden><div class="wsview" id="ws-view-network"></div></section>
+          <section class="view" data-view="archive" hidden><div class="wsview" id="ws-view-archive"></div></section>
+          <section class="view" data-view="proofgap" hidden><div class="wsview" id="ws-view-proofgap"></div></section>
           <section class="view" data-view="graph" hidden><div class="wsview" id="ws-view-graph"></div></section>
           <section class="view" data-view="flow" hidden><div class="wsview" id="ws-view-flow"></div></section>
           <section class="view" data-view="value" hidden><div class="wsview" id="ws-view-value"></div></section>

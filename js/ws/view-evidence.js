@@ -1,6 +1,7 @@
 /** Exam and audit evidence packs: build, download (JSON and printable HTML), and check a pack offline. */
 import { card, clear, dataTable, download, empty, field, h, icon, kv, mono, select, stamp } from './dom.js';
 import { zoneName } from './dom.js';
+import { roleReason } from './moat-ui.js';
 import { buildPack, CLI_SNIPPET, packHtml, VERIFY_STEPS, verifyPack } from './evidence.js';
 import { dayKey, DAY_MS } from './util.js';
 
@@ -29,6 +30,7 @@ export function renderEvidence(ctx, root) {
   const exportPack = async (kind) => {
     const pack = st.pack;
     if (!pack) return;
+    if (!ws.can(ctx.userId, 'export')) return;
     if (st.exported !== pack.pack_digest) {
       const r = await ctx.run({ op: 'evidenceExport', actor: ctx.userId, scope: pack.scope, packDigest: pack.pack_digest, receiptCount: pack.selection.count, segmentCount: pack.segments.length }, { refresh: false });
       if (!r.ok) return;
@@ -54,10 +56,10 @@ export function renderEvidence(ctx, root) {
       ]),
       h('p', { class: 'field__hint', text: 'Whole ledger segments are included unchanged, so each one still verifies exactly as signed. The tables are summaries that point back to receipt ids, and checking the pack re-derives each line from the receipts.' }),
       h('div', { class: 'btnrow' },
-        h('button', { type: 'button', class: 'btn btn--primary', on: { click: () => exportPack('json') } }, icon('download'), 'Download pack (JSON)'),
-        h('button', { type: 'button', class: 'btn', on: { click: () => exportPack('html') } }, icon('download'), 'Download report (HTML, printable)'),
+        h('button', { type: 'button', class: 'btn btn--primary', id: 'ev-dl-json', disabled: !ws.can(ctx.userId, 'export'), title: roleReason(ws, ctx.userId, 'export') ?? undefined, on: { click: () => exportPack('json') } }, icon('download'), 'Download pack (JSON)'),
+        h('button', { type: 'button', class: 'btn', id: 'ev-dl-html', disabled: !ws.can(ctx.userId, 'export'), title: roleReason(ws, ctx.userId, 'export') ?? undefined, on: { click: () => exportPack('html') } }, icon('download'), 'Download report (HTML, printable)'),
         h('button', { type: 'button', class: 'btn', on: { click: async () => { st.check = await ctx.measure.time('pack_verify', 'Evidence pack checked', () => verifyPack(st.pack), () => ({ receipts: st.pack.selection.count })); st.checkName = 'the pack you just built'; ctx.refresh(); } } }, 'Check this pack now')),
-      h('p', { class: 'field__hint', text: 'Downloading records an evidence_export receipt. Open the HTML file and use your browser\'s print command to save a PDF.' })));
+      h('p', { class: 'field__hint', text: ws.can(ctx.userId, 'export') ? 'Downloading records an evidence_export receipt. Open the HTML file and use your browser\'s print command to save a PDF.' : 'Downloading records an evidence_export receipt, so it is not available to a read-only examiner. You can check this pack here without changing anything.' })));
   };
   const doBuild = async () => {
     st.error = '';
@@ -73,7 +75,7 @@ export function renderEvidence(ctx, root) {
     }
     drawPreview();
   };
-  const build = h('button', { type: 'button', class: 'btn btn--primary', id: 'ev-build-btn', disabled: !ws.can(ctx.userId, 'export'), on: { click: doBuild } }, 'Build pack');
+  const build = h('button', { type: 'button', class: 'btn btn--primary', id: 'ev-build-btn', disabled: !ws.can(ctx.userId, 'open_pack'), on: { click: doBuild } }, 'Build pack');
 
   root.append(
     h('p', { class: 'notice' }, h('strong', { text: 'Demo evidence. ' }), 'Built from the synthetic ledger in this browser. A real pack would hold your receipts; the structure, hashes and offline checks are the same.'),
@@ -82,7 +84,7 @@ export function renderEvidence(ctx, root) {
       h('div', { class: 'filters' }, field('From', from), field('To', to), field('Case', caseSel)), build, error), preview),
   );
   drawPreview();
-  if (params.auto && params.case && ws.can(ctx.userId, 'export')) doBuild();
+  if (params.auto && params.case && ws.can(ctx.userId, 'open_pack')) doBuild();
 
   // Check a pack
   const file = h('input', { id: 'ev-file', class: 'sr', type: 'file', accept: '.json,application/json' });

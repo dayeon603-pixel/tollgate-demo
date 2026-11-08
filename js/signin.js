@@ -9,7 +9,8 @@ export const DEMO_USERS = [
   { id: 'analyst-a', name: 'Analyst A', role: 'Analyst', blurb: 'Screens addresses, works alerts, proposes clearances.' },
   { id: 'analyst-b', name: 'Analyst B', role: 'Analyst', blurb: 'A second analyst, for trying four-eyes with Analyst A.' },
   { id: 'approver-c', name: 'Approver C', role: 'Approver', blurb: 'Can approve or reject a proposed clearance.' },
-  { id: 'admin-d', name: 'Admin D', role: 'Admin', blurb: 'Approver rights plus policy, roles and list updates.' },
+  { id: 'admin-d', name: 'Admin D', role: 'Admin', blurb: 'Approver rights plus policy, roles, list updates and counterparty keys.' },
+  { id: 'examiner-e', name: 'Examiner E', role: 'Examiner', blurb: 'Read only. Opens evidence packs and checks them. Cannot change or record anything.' },
 ];
 
 /** Stores the chosen user, keeping the visitor's other saved preferences. Returns true when saved. */

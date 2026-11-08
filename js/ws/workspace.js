@@ -32,12 +32,17 @@ import { WS_ROUTES } from './workspace-routes.js';
 import { renderSettings } from './view-settings.js';
 import { applySettings, getSettings, loadSettings, setSettings, subscribeSettings } from './settings.js';
 import { hitFlash } from './hits.js';
+import { renderNetwork } from './view-network.js';
+import { renderArchive } from './view-archive.js';
+import { renderProofGap } from './view-proofgap.js';
+import { loadDemoNetwork, NET_KEYS_STORAGE, receiveInbound, registerMember, runGatePreset } from './net-flow.js';
 
 export { WS_ROUTES };
 export const LIST_URL = 'data/ofac_crypto_addresses.json';
 const RENDERERS = {
   dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph, flow: renderFlow,
   lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, value: renderValue, policy: renderPolicy, activity: renderActivity, api: renderApi, settings: renderSettings,
+  network: renderNetwork, archive: renderArchive, proofgap: renderProofGap,
 };
 const TOAST_MS = 6000;
 const RESET_CONFIRM_MS = 5000;
@@ -56,6 +61,7 @@ export async function initWorkspace({ openInVerifier }) {
   let route = null;
   let listMeta = null;
   let listJson = null;
+  let network = null;
   let ready = false;
   const params = {};
   let drawerStack = [];
@@ -123,6 +129,7 @@ export async function initWorkspace({ openInVerifier }) {
     openLive: (record) => openDrawer({ title: `Stream receipt ${record.receiptId.replace('rcpt:', '')}`, build: () => liveReceiptView(ctx, record) }, { push: dlg.open && drawerStack.length > 0 }),
     get userId() { return prefs.user; },
     get listMeta() { return listMeta; },
+    get network() { return network; },
     now: () => new Date(),
     toast,
     openInVerifier: (text) => { dlg.close(); openInVerifier(text, 'Demo', 'yours'); },
@@ -140,6 +147,52 @@ export async function initWorkspace({ openInVerifier }) {
       if (!writeJson(STATE_KEY, snapshot(ws, anchor)) && !storageWarned) {
         storageWarned = true;
         toast('This browser would not save your changes. They will be lost when you reload.', 'bad');
+      }
+    },
+    /**
+     * Receives an inbound payment with a receipt (see net-flow.js), saves, redraws.
+     * Returns { ok, result, record, screen } or { ok: false, error }.
+     */
+    async receive(spec, { refresh = true } = {}) {
+      try {
+        const out = await receiveInbound(ws, network, { actor: prefs.user, ts: new Date().toISOString(), ...spec });
+        ctx.persist();
+        if (refresh) ctx.refresh(); else ctx.refreshChrome();
+        return { ok: true, ...out };
+      } catch (error) {
+        if (!(error instanceof WorkspaceError) && !(error instanceof RangeError)) throw error;
+        toast(error.message, 'bad');
+        return { ok: false, error };
+      }
+    },
+    /** Runs one gate preset (net-flow.js GATE_PRESETS). */
+    async gate(id, { refresh = true } = {}) {
+      try {
+        const out = await runGatePreset(ws, id, { actor: prefs.user, now: new Date() });
+        if (out.unavailable) { toast(out.unavailable, 'bad'); return { ok: false, unavailable: out.unavailable }; }
+        ctx.persist();
+        if (refresh) ctx.refresh(); else ctx.refreshChrome();
+        return { ok: true, ...out };
+      } catch (error) {
+        if (!(error instanceof WorkspaceError)) throw error;
+        toast(error.message, 'bad');
+        return { ok: false, error };
+      }
+    },
+    /** Adds a demo member with a new Ed25519 key, registers it and pins it. */
+    async addMember() {
+      try {
+        const extra = network.members.length - 5;
+        const member = await network.addMember(`Demo Exchange ${String.fromCharCode(69 + extra)}`);
+        writeJson(NET_KEYS_STORAGE, network.serial());
+        await registerMember(ws, member, { actor: prefs.user, ts: new Date().toISOString(), pin: false });
+        ctx.persist();
+        ctx.refresh();
+        return { ok: true, member };
+      } catch (error) {
+        if (!(error instanceof WorkspaceError) && !(error instanceof RangeError)) throw error;
+        toast(error.message, 'bad');
+        return { ok: false, error };
       }
     },
     async run(partial, { quiet = false, refresh = true } = {}) {
@@ -218,6 +271,7 @@ export async function initWorkspace({ openInVerifier }) {
 
   async function resetDemo() {
     removeKey(STATE_KEY);
+    removeKey(NET_KEYS_STORAGE);
     dlg.close();
     ready = false;
     await boot();
@@ -265,7 +319,10 @@ export async function initWorkspace({ openInVerifier }) {
         listMeta = meta;
         void entries;
       }
-      const built = await createWorkspace({ list: listJson, anchor, savedOps: usable ? saved.ops : [] });
+      const loaded = await loadDemoNetwork(readJson(NET_KEYS_STORAGE));
+      network = loaded.network;
+      writeJson(NET_KEYS_STORAGE, loaded.serial);
+      const built = await createWorkspace({ list: listJson, anchor, savedOps: usable ? saved.ops : [], network });
       ws = built.ws;
       ready = true;
       live?.dispose();

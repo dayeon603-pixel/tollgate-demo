@@ -97,16 +97,19 @@ export async function buildPack(ws, scope, { now, actor }) {
   const alerts = scope.type === 'case'
     ? [ws.alertById.get(scope.alertId)]
     : ws.alerts.filter((a) => a.timeline.some((t) => idSet.has(t.receiptId)));
+  // A case can span segments the pack does not include. Only timeline lines whose receipt is inside an included segment are listed, so every line can be checked.
+  const inPack = new Set(segments.flatMap((s) => s.chain.receipts.map((r) => r.receipt_id)));
   const cases = alerts.map((a) => ({
     alert_id: a.id, kind: a.kind, status: a.status, address: a.address, tx_ids: a.txIds, amount_usd: a.amountUsd,
     assignee: a.assignee, opened_at: a.createdAt,
-    timeline: a.timeline.map((t) => ({ at: t.ts, actor: t.actor, role: ws.roleOf(t.actor), action: t.action, from: t.from, to: t.to, note: t.note, receipt_id: t.receiptId })),
+    timeline: a.timeline.filter((t) => inPack.has(t.receiptId)).map((t) => ({ at: t.ts, actor: t.actor, role: ws.roleOf(t.actor), action: t.action, from: t.from, to: t.to, note: t.note, receipt_id: t.receiptId })),
   }));
   const approvals = [];
   for (const a of alerts) {
     for (const t of a.timeline) {
-      if (t.action !== 'approve_clear' && t.action !== 'reject_clear') continue;
+      if ((t.action !== 'approve_clear' && t.action !== 'reject_clear') || !inPack.has(t.receiptId)) continue;
       const proposal = [...a.timeline].reverse().find((p) => p.action === 'propose_clear' && Date.parse(p.ts) <= Date.parse(t.ts));
+      if (!proposal || !inPack.has(proposal.receiptId)) continue;
       approvals.push({
         alert_id: a.id, proposed_by: proposal?.actor ?? null, proposal_receipt: proposal?.receiptId ?? null,
         decided_by: t.actor, decision: t.action === 'approve_clear' ? 'approved' : 'rejected', decision_receipt: t.receiptId, at: t.ts,

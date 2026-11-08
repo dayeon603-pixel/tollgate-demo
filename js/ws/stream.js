@@ -11,6 +11,7 @@
  * verifies with the real verifier.
  */
 import { evaluatePolicy } from './engine.js';
+import { evaluateGate } from './gate.js';
 import { Ledger } from './ledger.js';
 import { matchIn } from './lists.js';
 import { between, fakeEthAddress, fakeTronAddress, HOUR_MS, pick, rng } from './util.js';
@@ -26,6 +27,8 @@ export const LIVE_MAX_RECEIPTS = 300;
 export const LIVE_MAX_EVENTS = 2500;
 export const LATENCY_SAMPLES = 2000;
 export const BUCKET_KEEP_S = 3600;
+/** One transfer in this many reaches the gate without a receipt, as a probe the demo makes on purpose. */
+export const GATE_PROBE_EVERY = 20;
 const POOL_ETH = 70;
 const POOL_TRON = 40;
 const HIT_RATE = 0.03;
@@ -160,7 +163,7 @@ export function percentile(sortedAsc, p) {
   return sortedAsc[rank];
 }
 
-const emptyBucket = () => ({ allow: 0, hold: 0, block: 0, usd: 0 });
+const emptyBucket = () => ({ allow: 0, hold: 0, block: 0, usd: 0, rel: 0, blk: 0 });
 
 /** Screens the synthetic stream and keeps rolling statistics. No DOM, no timers. */
 export class LiveTape {
@@ -169,9 +172,11 @@ export class LiveTape {
    *   seed; clock, () => epoch ms; perf, () => high resolution ms (for latency); maxReceipts, the
    *   size at which the rolling ledger restarts.
    */
-  constructor({ ws, seed = STREAM_SEED, clock = Date.now, perf = (typeof performance !== 'undefined' ? () => performance.now() : Date.now), maxReceipts = LIVE_MAX_RECEIPTS, maxEvents = LIVE_MAX_EVENTS }) {
+  constructor({ ws, seed = STREAM_SEED, gate = false, clock = Date.now, perf = (typeof performance !== 'undefined' ? () => performance.now() : Date.now), maxReceipts = LIVE_MAX_RECEIPTS, maxEvents = LIVE_MAX_EVENTS }) {
     this.ws = ws;
     this.seed = seed;
+    /** When true every payment also goes through the gate and the gate decision is signed into the stream ledger. */
+    this.gateOn = gate;
     this.clock = clock;
     this.perf = perf;
     this.maxReceipts = maxReceipts;
@@ -194,6 +199,7 @@ export class LiveTape {
     this.byChainAsset = new Map();
     this.flagsByHour = new Map();
     this.holdsByCell = new Map();
+    this.gateTotals = { released: 0, blocked: 0, byReason: {} };
   }
 
   /** Screens the next `count` payments. Returns their records, oldest first. */
@@ -221,17 +227,43 @@ export class LiveTape {
     };
     if (rule) params.policy_rule = rule.id;
     const reasons = matches.length ? matches.map((e) => `sanctions_hit=SDN-${e.uid}-${e.chain}`) : rule ? [`policy_rule=${rule.id}`, `threshold_usd=${rule.thresholdUsd}`] : ['clean'];
-    if (this.ledger.size >= this.maxReceipts) this.#roll();
+    if (this.ledger.size >= this.maxReceipts - (this.gateOn ? 1 : 0)) this.#roll();
     const entry = await this.ledger.append({
       type: 'stablecoin_payment_screen', params, decision: outcome === 'BLOCK' ? 'DENY' : outcome === 'HOLD' ? 'HOLD' : 'ALLOW', outcome, reasons, agentId: STREAM_AGENT,
     }, version, new Date(nowMs));
     const ms = this.perf() - t0;
     const record = {
       ...event, t: nowMs, outcome, rule: rule?.id ?? null, entries: matches, receiptId: entry.receipt.receipt_id, ms,
-      versionId: version.id, epoch: this.epoch,
+      versionId: version.id, epoch: this.epoch, gate: null,
     };
+    if (this.gateOn) record.gate = await this.#gate(record, entry.receipt, version, params.payment_id);
     this.#account(record);
     return record;
+  }
+
+  /**
+   * Runs one payment through the gate and signs the decision. Most transfers present the receipt they
+   * were just given. One in GATE_PROBE_EVERY is a probe that arrives with no receipt, so the stream
+   * shows the gate blocking something other than holds and hits.
+   */
+  async #gate(record, receipt, version, paymentId) {
+    const probe = hashString(`${this.seed}:probe:${record.i}`) % GATE_PROBE_EVERY === 0;
+    const presented = probe ? null : {
+      kind: 'own', type: receipt.action.type, outcome: record.outcome, address: record.to,
+      listDigest: version.digest, decidedAt: receipt.verdict.decided_at,
+    };
+    const verdict = evaluateGate({ presented, valid: true, address: record.to, now: new Date(record.t), listDigest: version.digest });
+    const gateId = `LG-${String(record.i + 1).padStart(6, '0')}`;
+    const entry = await this.ledger.append({
+      type: 'gate_decision',
+      params: {
+        gate_id: gateId, transfer_id: paymentId, gate: verdict.release ? 'RELEASE' : 'BLOCK', beneficiary_address: record.to, amount_usd: record.amountUsd,
+        presented_kind: presented ? 'own' : 'none', presented_receipt_id: presented ? receipt.receipt_id : null, reason_codes: verdict.reasons, source: 'demo_stream', synthetic: true,
+      },
+      decision: verdict.release ? 'ALLOW' : 'DENY', outcome: verdict.release ? 'RELEASED' : 'BLOCKED',
+      reasons: verdict.release ? ['gate=release'] : verdict.reasons.map((c) => `gate_block=${c}`), agentId: STREAM_AGENT,
+    }, version, new Date(record.t));
+    return { release: verdict.release, reasons: verdict.reasons, receiptId: entry.receipt.receipt_id, probe };
   }
 
   #roll() {
@@ -255,6 +287,11 @@ export class LiveTape {
     if (this.latency.length > LATENCY_SAMPLES) this.latency.splice(0, this.latency.length - LATENCY_SAMPLES);
     this.totals[key]++;
     this.totals.usd += r.amountUsd;
+    if (r.gate) {
+      this.gateTotals[r.gate.release ? 'released' : 'blocked']++;
+      for (const code of r.gate.reasons) this.gateTotals.byReason[code] = (this.gateTotals.byReason[code] ?? 0) + 1;
+      bucket[r.gate.release ? 'rel' : 'blk']++;
+    }
     const ca = `${r.chain}|${r.asset}`;
     const row = this.byChainAsset.get(ca) ?? { chain: r.chain, asset: r.asset, n: 0, usd: 0, hold: 0, block: 0 };
     row.n++;
@@ -284,7 +321,7 @@ export class LiveTape {
       for (let s = from; s < from + bucketS; s++) {
         const bucket = this.buckets.get(s);
         if (!bucket) continue;
-        row.allow += bucket.allow; row.hold += bucket.hold; row.block += bucket.block; row.usd += bucket.usd;
+        row.allow += bucket.allow; row.hold += bucket.hold; row.block += bucket.block; row.usd += bucket.usd; row.rel += bucket.rel; row.blk += bucket.blk;
       }
       row.total = row.allow + row.hold + row.block;
       out.push(row);

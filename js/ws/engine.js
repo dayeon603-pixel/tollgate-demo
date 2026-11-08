@@ -10,8 +10,12 @@
 import { MAX_ADDRESS_LENGTH, MAX_AMOUNT_USD, readAddress, readAmount, sha256Hex } from '../workbench.js';
 import { diffVersions, matchIn } from './lists.js';
 import { Ledger } from './ledger.js';
+import { checkReceipt, listSnapshotOf } from './receipt-check.js';
+import { evaluateGate } from './gate.js';
 
-export const ROLES = ['analyst', 'approver', 'admin'];
+export const ROLES = ['analyst', 'approver', 'admin', 'examiner'];
+/** Roles that work cases. The examiner is read-only and sits outside the analyst ladder. */
+export const WORKING_ROLES = ['analyst', 'approver', 'admin'];
 export const STATUSES = ['open', 'in_review', 'escalated', 'cleared', 'confirmed'];
 export const FINAL_STATUSES = ['cleared', 'confirmed'];
 export const MIN_NOTE_CHARS = 10;
@@ -24,15 +28,18 @@ export const DEFAULT_USERS = [
   { id: 'analyst-b', name: 'Analyst B', role: 'analyst' },
   { id: 'approver-c', name: 'Approver C', role: 'approver' },
   { id: 'admin-d', name: 'Admin D', role: 'admin' },
+  { id: 'examiner-e', name: 'Examiner E', role: 'examiner' },
 ];
 
-const ANALYST_PERMISSIONS = ['screen', 'watch', 'assign', 'note', 'start_review', 'escalate', 'propose_clear', 'confirm', 'export'];
+const ANALYST_PERMISSIONS = ['screen', 'watch', 'assign', 'note', 'start_review', 'escalate', 'propose_clear', 'confirm', 'export', 'open_pack', 'network_present', 'gate_use'];
 const APPROVER_PERMISSIONS = [...ANALYST_PERMISSIONS, 'approve_clear', 'reject_clear', 'reopen'];
 /** What each role may do. The Policy view shows this table. */
 export const PERMISSIONS = {
   analyst: ANALYST_PERMISSIONS,
   approver: APPROVER_PERMISSIONS,
-  admin: [...APPROVER_PERMISSIONS, 'policy', 'roles', 'list_update'],
+  admin: [...APPROVER_PERMISSIONS, 'policy', 'roles', 'list_update', 'network_trust'],
+  /** Read only: may open an evidence pack and check it, may not change or record anything. */
+  examiner: ['open_pack'],
 };
 export const PERMISSION_LABELS = {
   screen: 'Screen addresses and batches',
@@ -50,6 +57,10 @@ export const PERMISSION_LABELS = {
   policy: 'Change policy settings',
   roles: 'Change user roles',
   list_update: 'Apply a list update',
+  open_pack: 'Open and check evidence packs (read only)',
+  network_present: 'Receive inbound payments with receipts',
+  gate_use: 'Run a transfer through the payment gate',
+  network_trust: 'Register, pin and revoke counterparty keys',
 };
 
 /** Policy settings an admin may change, with the check each value must pass. */
@@ -137,7 +148,9 @@ export class Workspace {
     this.exports = [];
     this.ops = [];
     this.seedCount = 0;
-    this.counters = { tx: 0, alert: 0, lookback: 0 };
+    this.counters = { tx: 0, alert: 0, lookback: 0, reliance: 0, gate: 0 };
+    /** Receipt network: counterparty registry, inbound reliance log, shares already used, and gate decisions. */
+    this.net = { members: [], reliances: [], used: new Map(), gates: [] };
     this.txById = new Map();
     this.alertById = new Map();
     this.#queue = Promise.resolve();
@@ -197,6 +210,9 @@ export class Workspace {
       case 'watchAdd': result = await this.#watchAdd(op); break;
       case 'watchRemove': result = await this.#watchRemove(op); break;
       case 'evidenceExport': result = await this.#evidenceExport(op); break;
+      case 'netTrust': result = await this.#netTrust(op); break;
+      case 'netReliance': result = await this.#netReliance(op); break;
+      case 'gateCheck': result = await this.#gateCheck(op); break;
       default: refuse('bad_op', `Unknown action "${op.op}".`);
     }
     this.ops.push(op);
@@ -253,6 +269,7 @@ export class Workspace {
     };
     this.txs.push(tx);
     this.txById.set(id, tx);
+    if (op.relianceId) this.linkRescreen(op.relianceId, id);
     const created = [];
     if (outcome !== 'ALLOW') {
       const alert = this.#newAlert({
@@ -538,6 +555,155 @@ export class Workspace {
       this.watch.splice(index, 0, removed);
       throw error;
     }
+  }
+
+  // ---- receipt network and payment gate ------------------------------------------------------
+
+  /** A registry member by public key (hex), or null. */
+  member(keyId) {
+    return this.net.members.find((m) => m.keyId === keyId) ?? null;
+  }
+
+  /** Registry as the share check reads it: Map of key id to { status }. */
+  registry() {
+    return new Map(this.net.members.map((m) => [m.keyId, { status: m.status, name: m.name }]));
+  }
+
+  /** The list version with this digest, or null. */
+  versionByDigest(digest) {
+    return this.versions.find((v) => v.digest === digest) ?? null;
+  }
+
+  async #netTrust(op) {
+    const user = this.#requireUser(op, 'network_trust');
+    const keyId = typeof op.keyId === 'string' ? op.keyId : '';
+    if (!/^[0-9a-f]{64}$/.test(keyId)) refuse('bad_key', 'A key is 64 hexadecimal characters.');
+    let member = this.member(keyId);
+    let before = member?.status ?? null;
+    if (op.action === 'register') {
+      if (member) refuse('duplicate', 'That key is already in the registry.');
+      const name = typeof op.name === 'string' ? op.name.trim() : '';
+      if (!name || name.length > MAX_LABEL_CHARS) refuse('label_required', `Give the member a name of 1 to ${MAX_LABEL_CHARS} characters.`);
+      member = { keyId, name, status: 'registered', registeredAt: op.ts, registeredBy: user.id, pinnedAt: null, pinnedBy: null, revokedAt: null, revokedBy: null, revokeReason: null, receiptId: null };
+    } else if (op.action === 'pin') {
+      if (!member) refuse('unknown_key', 'That key is not in the registry. Register it first.');
+      if (member.status === 'pinned') refuse('no_change', 'That key is already pinned.');
+      if (member.status === 'revoked') refuse('revoked', 'A revoked key stays revoked. Register a new key for this member instead.');
+    } else if (op.action === 'revoke') {
+      if (!member) refuse('unknown_key', 'That key is not in the registry.');
+      if (member.status === 'revoked') refuse('no_change', 'That key is already revoked.');
+      if (!cleanNote(op.reason, { required: true })) refuse('note_required', 'Say why the key is revoked.');
+    } else refuse('bad_action', 'Network key actions are register, pin and revoke.');
+    const after = op.action === 'register' ? 'registered' : op.action === 'pin' ? 'pinned' : 'revoked';
+    const reason = op.action === 'revoke' ? cleanNote(op.reason, { required: true }) : '';
+    const entry = await this.#sign({
+      type: 'network_trust_change',
+      params: { action: op.action, key_id: keyId, member_name: member.name, state_before: before, state_after: after, actor: user.id, actor_role: user.role, ...(reason ? { reason } : {}) },
+      decision: 'RECORD', outcome: 'TRUST_CHANGE', reasons: [`key_state=${after}`, `actor=${user.id}`],
+    }, this.inForce ?? this.versions[0], op);
+    if (!this.net.members.includes(member)) this.net.members.push(member);
+    member.status = after;
+    member.receiptId = entry.receipt.receipt_id;
+    if (op.action === 'pin') { member.pinnedAt = op.ts; member.pinnedBy = user.id; }
+    if (op.action === 'revoke') { member.revokedAt = op.ts; member.revokedBy = user.id; member.revokeReason = reason; }
+    return { member, receipt: entry.receipt, created: [] };
+  }
+
+  /**
+   * Records what happened to one inbound payment that came with (or without) a sender's receipt.
+   * The signature checks ran before this op, in network.js; this op re-checks the facts the engine
+   * owns (key pinned, list current, share unused) so an accepted record can never contradict state.
+   */
+  async #netReliance(op) {
+    const user = this.#requireUser(op, 'network_present');
+    if (!this.inForce) refuse('no_list', 'No list version is in force yet.');
+    if (!['ACCEPTED', 'REFUSED', 'NONE'].includes(op.outcome)) refuse('bad_outcome', 'An inbound payment is accepted, refused or arrived with no receipt.');
+    const checked = readAddress(op.address);
+    if (checked.error) refuse('bad_address', checked.error);
+    const amount = op.amountUsd === null || op.amountUsd === undefined ? null : readAmount(String(op.amountUsd));
+    if (amount?.error) refuse('bad_amount', amount.error);
+    const reasons = Array.isArray(op.reasons) ? op.reasons.map((r) => String(r.code ?? r)) : [];
+    const member = op.keyId ? this.member(op.keyId) : null;
+    const listVersion = op.listDigest ? this.versionByDigest(op.listDigest) : null;
+    if (op.outcome === 'ACCEPTED') {
+      if (reasons.length) refuse('reliance_invalid', 'An accepted payment cannot carry a refusal reason.');
+      if (!member || member.status !== 'pinned') refuse('reliance_invalid', 'A receipt is relied on only when its key is pinned and not revoked.');
+      if (!listVersion || listVersion.id !== this.inForceId) refuse('reliance_invalid', 'A receipt is relied on only when it was made on the list in force.');
+      if (this.net.used.has(op.shareId)) refuse('reliance_invalid', 'That share was already relied on once.');
+    }
+    const id = `NR-${pad(this.counters.reliance + 1, 5)}`;
+    const params = {
+      reliance_id: id, outcome: op.outcome, share_id: op.shareId ?? null, issuer_key_id: op.keyId ?? null, issuer_name: member?.name ?? op.issuerName ?? null,
+      presented_receipt_id: op.receiptId ?? null, presented_receipt_hash: op.receiptHash ?? null, beneficiary_address: checked.address, chain: op.chain ?? null,
+      counterparty_address: op.counterparty ?? null, list_in_force: this.inForce.id, list_of_receipt: listVersion?.id ?? null, time_basis: 'issuer_word',
+      reason_codes: reasons, actor: user.id, synthetic: true,
+    };
+    if (amount?.amount !== null && amount?.amount !== undefined) params.amount_usd = amount.amount;
+    const decision = op.outcome === 'REFUSED' ? 'DENY' : 'RECORD';
+    const outcomeWord = { ACCEPTED: 'RELIED_ON', REFUSED: 'REFUSED', NONE: 'NO_RECEIPT' }[op.outcome];
+    const entry = await this.#sign({
+      type: 'network_reliance', params, decision, outcome: outcomeWord, reasons: reasons.length ? reasons.map((c) => `refused=${c}`) : [`time_basis=issuer_word`],
+    }, this.inForce, op);
+    this.counters.reliance++;
+    const record = {
+      id, ts: op.ts, actor: user.id, outcome: op.outcome, reasons: Array.isArray(op.reasons) ? op.reasons.map((r) => ({ code: r.code ?? r, label: r.label ?? '', text: r.text ?? '' })) : [],
+      shareId: op.shareId ?? null, keyId: op.keyId ?? null, issuerName: member?.name ?? op.issuerName ?? 'Unregistered sender', presentedReceiptId: op.receiptId ?? null,
+      receiptHash: op.receiptHash ?? null, address: checked.address, chain: op.chain ?? null, counterparty: op.counterparty ?? null, amountUsd: amount?.amount ?? null,
+      decidedAt: op.decidedAt ?? null, listVersionId: listVersion?.id ?? null, listInForceId: this.inForce.id, receiptId: entry.receipt.receipt_id, rescreenTxId: null,
+    };
+    this.net.reliances.push(record);
+    if (op.outcome === 'ACCEPTED') this.net.used.set(op.shareId, id);
+    return { record, receipt: entry.receipt, created: [] };
+  }
+
+  /** Links an inbound payment that had to be screened here to the screening it caused. */
+  linkRescreen(relianceId, txId) {
+    const record = this.net.reliances.find((r) => r.id === relianceId);
+    if (record) record.rescreenTxId = txId;
+  }
+
+  async #gateCheck(op) {
+    const user = this.#requireUser(op, 'gate_use');
+    if (!this.inForce) refuse('no_list', 'No list version is in force yet.');
+    const checked = readAddress(op.address);
+    if (checked.error) refuse('bad_address', checked.error);
+    const amount = op.amountUsd === null || op.amountUsd === undefined ? { amount: null } : readAmount(String(op.amountUsd));
+    if (amount.error) refuse('bad_amount', amount.error);
+    let presented = null;
+    let valid = false;
+    if (op.ref?.kind === 'ledger') {
+      const entry = this.ledger.find(op.ref.id);
+      if (entry) {
+        const r = entry.receipt;
+        presented = { kind: 'own', receiptId: r.receipt_id, type: r.action.type, outcome: r.action.params.outcome, address: r.action.params.beneficiary_address, listDigest: listSnapshotOf(r), decidedAt: r.verdict.decided_at };
+        valid = (await checkReceipt(r)).ok;
+      }
+    } else if (op.ref?.kind === 'shared') {
+      const rel = this.net.reliances.find((r) => r.id === op.ref.id);
+      if (rel?.outcome === 'ACCEPTED') {
+        presented = { kind: 'shared', receiptId: rel.id, type: 'stablecoin_payment_screen', outcome: 'ALLOW', address: rel.address, listDigest: this.version(rel.listVersionId)?.digest ?? null, decidedAt: rel.decidedAt };
+        valid = true;
+      }
+    }
+    const verdict = evaluateGate({ presented, valid, address: checked.address, now: new Date(op.ts), listDigest: this.inForce.digest });
+    const id = `GT-${pad(this.counters.gate + 1, 5)}`;
+    const release = verdict.release;
+    const params = {
+      gate_id: id, transfer_id: op.transferId ?? id, gate: release ? 'RELEASE' : 'BLOCK', beneficiary_address: checked.address, presented_kind: presented?.kind ?? 'none',
+      presented_receipt_id: presented?.receiptId ?? null, reason_codes: verdict.reasons, list_in_force: this.inForce.id, source: op.source ?? 'manual', actor: user.id, synthetic: true,
+    };
+    if (amount.amount !== null) params.amount_usd = amount.amount;
+    const entry = await this.#sign({
+      type: 'gate_decision', params, decision: release ? 'ALLOW' : 'DENY', outcome: release ? 'RELEASED' : 'BLOCKED',
+      reasons: release ? ['gate=release'] : verdict.reasons.map((c) => `gate_block=${c}`),
+    }, this.inForce, op);
+    this.counters.gate++;
+    const record = {
+      id, ts: op.ts, actor: user.id, transferId: params.transfer_id, release, reasons: verdict.reasons, address: checked.address, amountUsd: amount.amount,
+      presentedKind: params.presented_kind, presentedReceiptId: params.presented_receipt_id, source: params.source, receiptId: entry.receipt.receipt_id,
+    };
+    this.net.gates.push(record);
+    return { record, receipt: entry.receipt, created: [] };
   }
 
   // ---- policy, roles, exports -------------------------------------------------------------

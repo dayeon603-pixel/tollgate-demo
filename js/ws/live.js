@@ -7,7 +7,7 @@ import { LiveRunner, LiveTape } from './stream.js';
 export const UI_FRAME_MS = 250;
 
 export function createLive(ctx) {
-  const tape = new LiveTape({ ws: ctx.ws });
+  const tape = new LiveTape({ ws: ctx.ws, gate: true });
   const live = {
     tape,
     runner: null,

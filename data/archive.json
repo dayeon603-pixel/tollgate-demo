@@ -1,0 +1,463 @@
+{
+ "schema": 1,
+ "live_proof": {
+  "headline": "Since 2026-10-26T05:51:19Z, 7 of 10 freezes of a newly listed address we saw have a provable order against their listing from our anchored receipts.",
+  "t0": "2026-10-26T05:51:19Z",
+  "t1": "2026-10-30T10:27:15Z",
+  "receipts": 232,
+  "anchored": 232,
+  "bitcoin_confirmed": 232,
+  "N": 10,
+  "k": 7,
+  "M": 0,
+  "batches": 20,
+  "source": {
+   "path": "results/live_proof/LIVE_PROOF.md",
+   "sha256": "86191cc5d98572bc26a0290223d424b227916d44f447a932e52c24c802b49fbd"
+  },
+  "summary": {
+   "path": "results/live_proof/summary.json",
+   "sha256": "d592be8569d74292020ccbc0765619b6c09892b7c94dea47336baf30313870c4"
+  }
+ },
+ "postings": [
+  {
+   "slug": "20261019",
+   "url": "https://ofac.treasury.gov/recent-actions/20261019",
+   "content_sha256": "e32a7d77ba0366e4961a6082daf2efe69564c51fc54a7cfe47d4675408df86a2",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T05:51:19Z",
+   "receipt_id": "obs:0",
+   "ledger_seq": 0,
+   "anchor": {
+    "batch": 0,
+    "root": "e0142e320c5f855005cd6150bbdc3819f84e5a02992df986b50a5c4135cb05a0",
+    "rfc3161_time": "2026-10-26T05:51:33Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T06:01:11Z",
+      "height": 973196
+     },
+     {
+      "block_time": "2026-10-26T06:04:06Z",
+      "height": 973197
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00000.ots",
+     "sha256": "6ee3ac547943d256dd8642b413b9333bff432e43e877dc993ae20f3608f325bd"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00000.tsr",
+     "sha256": "28f79a69348bf20ffd56c5812a6e92394ffd88781a2ceb25e05b140f1224e5d4"
+    }
+   }
+  },
+  {
+   "slug": "20261021",
+   "url": "https://ofac.treasury.gov/recent-actions/20261021",
+   "content_sha256": "9c3b37c09948c830e55db5eea110f928045de71faef3cebe24c1a721d0f313f0",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T05:51:20Z",
+   "receipt_id": "obs:1",
+   "ledger_seq": 1,
+   "anchor": {
+    "batch": 0,
+    "root": "e0142e320c5f855005cd6150bbdc3819f84e5a02992df986b50a5c4135cb05a0",
+    "rfc3161_time": "2026-10-26T05:51:33Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T06:01:11Z",
+      "height": 973196
+     },
+     {
+      "block_time": "2026-10-26T06:04:06Z",
+      "height": 973197
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00000.ots",
+     "sha256": "6ee3ac547943d256dd8642b413b9333bff432e43e877dc993ae20f3608f325bd"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00000.tsr",
+     "sha256": "28f79a69348bf20ffd56c5812a6e92394ffd88781a2ceb25e05b140f1224e5d4"
+    }
+   }
+  },
+  {
+   "slug": "20261019",
+   "url": "https://ofac.treasury.gov/recent-actions/20261019",
+   "content_sha256": "e8b460d66d6d33baeeef4d1bea66d4f90cab0beb79cdb12d3e62f2ae64d3f22a",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T14:04:55Z",
+   "receipt_id": "obs:117",
+   "ledger_seq": 117,
+   "anchor": {
+    "batch": 1,
+    "root": "f2d347f9614172dbcf035f45c530fe04064ce3b25a327e517d6135631d33907e",
+    "rfc3161_time": "2026-10-26T14:05:19Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T14:29:49Z",
+      "height": 973248
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.ots",
+     "sha256": "915aac9c76c2ab3b32f47f8e3cb9f47090c7c742df3bf2c8aa52f5e00991555b"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.tsr",
+     "sha256": "7cf8469a2d7ef9b9d73610bbb3188df72359a457f32a69c9822f19608517b51e"
+    }
+   }
+  },
+  {
+   "slug": "20261021",
+   "url": "https://ofac.treasury.gov/recent-actions/20261021",
+   "content_sha256": "a69c291f821d4bbaa5b7b0c16eac880bfce87eb7aa45f6acf70f083201ad1e4d",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T14:04:55Z",
+   "receipt_id": "obs:118",
+   "ledger_seq": 118,
+   "anchor": {
+    "batch": 1,
+    "root": "f2d347f9614172dbcf035f45c530fe04064ce3b25a327e517d6135631d33907e",
+    "rfc3161_time": "2026-10-26T14:05:19Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T14:29:49Z",
+      "height": 973248
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.ots",
+     "sha256": "915aac9c76c2ab3b32f47f8e3cb9f47090c7c742df3bf2c8aa52f5e00991555b"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.tsr",
+     "sha256": "7cf8469a2d7ef9b9d73610bbb3188df72359a457f32a69c9822f19608517b51e"
+    }
+   }
+  },
+  {
+   "slug": "20261026",
+   "url": "https://ofac.treasury.gov/recent-actions/20261026",
+   "content_sha256": "f468f8a9de6237953d1e26dcca123f8c74da1284439ea8e55e52292704f4806d",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T14:04:56Z",
+   "receipt_id": "obs:119",
+   "ledger_seq": 119,
+   "anchor": {
+    "batch": 1,
+    "root": "f2d347f9614172dbcf035f45c530fe04064ce3b25a327e517d6135631d33907e",
+    "rfc3161_time": "2026-10-26T14:05:19Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T14:29:49Z",
+      "height": 973248
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.ots",
+     "sha256": "915aac9c76c2ab3b32f47f8e3cb9f47090c7c742df3bf2c8aa52f5e00991555b"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00001.tsr",
+     "sha256": "7cf8469a2d7ef9b9d73610bbb3188df72359a457f32a69c9822f19608517b51e"
+    }
+   }
+  },
+  {
+   "slug": "20261026",
+   "url": "https://ofac.treasury.gov/recent-actions/20261026",
+   "content_sha256": "ba3e3b899bba75664783f10192b21fab9d9298c309d0ac31559f6002de51214b",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-26T14:10:27Z",
+   "receipt_id": "obs:120",
+   "ledger_seq": 120,
+   "anchor": {
+    "batch": 2,
+    "root": "6cf94d9c26c4ad80548c1ffe5a238b78c0154a5af774d9db8b6aa93eaf62ce85",
+    "rfc3161_time": "2026-10-26T15:08:21Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-26T16:43:30Z",
+      "height": 973258
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00002.ots",
+     "sha256": "fb7ce60ca8d110eb630a888b271183129a7a66b3c8519106cfd3650c4cf7b559"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00002.tsr",
+     "sha256": "a8d915a69acd4a10748835545684ed74524bbae4680880bc6ea4b6ac4bf05af5"
+    }
+   }
+  },
+  {
+   "slug": "20261027",
+   "url": "https://ofac.treasury.gov/recent-actions/20261027",
+   "content_sha256": "969b1cc8b0908b979a32418fb06387074a8063126c713abe0154b74c6860aeb9",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-27T17:56:41Z",
+   "receipt_id": "obs:138",
+   "ledger_seq": 138,
+   "anchor": {
+    "batch": 7,
+    "root": "ed6f1207fe82a99e82e4f3e3f5e29456530792877f093733ec674415d1b865b2",
+    "rfc3161_time": "2026-10-27T17:57:23Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-27T18:20:54Z",
+      "height": 973441
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00007.ots",
+     "sha256": "d3d0704ea2ab03c51b6f94daf0168fcd61b44ca1f41e97e94ab88aba8db3773a"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00007.tsr",
+     "sha256": "6140268e04372d76112089c00545255ab0da49c1e0ac82c7e1e6c57ea03e7d3e"
+    }
+   }
+  },
+  {
+   "slug": "20261028",
+   "url": "https://ofac.treasury.gov/recent-actions/20261028",
+   "content_sha256": "62b63cfd69700b7cafa1230edbcb702187b5847692be6f8f2dab79495e633124",
+   "addresses_listed": 8,
+   "observed_at": "2026-10-28T14:14:29Z",
+   "receipt_id": "obs:148",
+   "ledger_seq": 148,
+   "anchor": {
+    "batch": 10,
+    "root": "a37a874fb8b7552556670b1537e1fe104902c0292a454b5d8ce0a49c41344e69",
+    "rfc3161_time": "2026-10-28T15:12:38Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-28T15:38:35Z",
+      "height": 973573
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00010.ots",
+     "sha256": "7877100f71c209fef9fe3f9862c82631b5aa6a70d8ff17133568b5522f969258"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00010.tsr",
+     "sha256": "425e8af59376d5f7b911639beca47c32e3d4c7ea2b5927af5338fc83ee45eae5"
+    }
+   }
+  },
+  {
+   "slug": "20261028",
+   "url": "https://ofac.treasury.gov/recent-actions/20261028",
+   "content_sha256": "6e33ba07e4789e5a126af2287bebddbe5d33d96f368bea5957d69cc824fdb227",
+   "addresses_listed": 8,
+   "observed_at": "2026-10-28T14:40:53Z",
+   "receipt_id": "obs:175",
+   "ledger_seq": 175,
+   "anchor": {
+    "batch": 10,
+    "root": "a37a874fb8b7552556670b1537e1fe104902c0292a454b5d8ce0a49c41344e69",
+    "rfc3161_time": "2026-10-28T15:12:38Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-28T15:38:35Z",
+      "height": 973573
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00010.ots",
+     "sha256": "7877100f71c209fef9fe3f9862c82631b5aa6a70d8ff17133568b5522f969258"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00010.tsr",
+     "sha256": "425e8af59376d5f7b911639beca47c32e3d4c7ea2b5927af5338fc83ee45eae5"
+    }
+   }
+  },
+  {
+   "slug": "20261029",
+   "url": "https://ofac.treasury.gov/recent-actions/20261029",
+   "content_sha256": "5abd1b5e48dd5d381a2d0e7e911acccfd7d01d7fa27dec13f98b1e42e906842d",
+   "addresses_listed": 0,
+   "observed_at": "2026-10-29T23:30:30Z",
+   "receipt_id": "obs:199",
+   "ledger_seq": 199,
+   "anchor": {
+    "batch": 15,
+    "root": "8431f9b07a5492ef62fda0e897d9bf7dc8a38ee1f7a2404cd13964a6f0f3e68e",
+    "rfc3161_time": "2026-10-29T23:30:49Z",
+    "rfc3161_verified": true,
+    "inclusion_ok": true,
+    "bitcoin": [
+     {
+      "block_time": "2026-10-30T00:22:01Z",
+      "height": 973754
+     }
+    ],
+    "ots": {
+     "path": "results/live_proof/inputs/anchors/batch_00015.ots",
+     "sha256": "5aa0fadc57489ad97df14fae3ad91a4033ef98ddf4ea8484dde5decbde79a390"
+    },
+    "tsr": {
+     "path": "results/live_proof/inputs/anchors/batch_00015.tsr",
+     "sha256": "b0a84898dc178a73ff59aa6d00510aee509ba2ae3486bf2de361abb4fc004c0b"
+    }
+   }
+  }
+ ],
+ "snapshot": {
+  "publish_date": "10/21/2026",
+  "fetched_at": "2026-10-27T00:39:48Z",
+  "list_digest": "112dfd2697e20e56d62eaff71d86993856600bd1502dc1ff3ee65ddeed2efff7",
+  "raw_sha256": "421c5f6ee841eb7c0e327eb0d6bdbe24cbb58091e3cbfd77d83dd41c7b5a5e08",
+  "raw_xml_gz_sha256_of_decompressed": "421c5f6ee841eb7c0e327eb0d6bdbe24cbb58091e3cbfd77d83dd41c7b5a5e08",
+  "source_url": "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML",
+  "source": {
+   "path": "data/ofac_primary/confirmations.jsonl",
+   "sha256": "8c863ee49034ec4ebb198260bf052826f01083f9687585f037f924b79ac133cc"
+  },
+  "snapshot_file": {
+   "path": "data/ofac_primary/snapshots/sdn_112dfd2697e2.json",
+   "sha256": "a8c843e697441e5bb1deaa0b21a6208e6db8406638d22b4310a0acddadaba638"
+  },
+  "anchored_independently": false
+ },
+ "fetches": {
+  "fetches": [
+   {
+    "fetched_at": "2026-10-27T00:39:48Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-27T00:47:50Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-27T07:44:39Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-27T13:57:26Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-27T20:19:38Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-28T03:20:04Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-28T09:37:21Z",
+    "publish_date": "10/21/2026"
+   },
+   {
+    "fetched_at": "2026-10-28T15:56:02Z",
+    "publish_date": "10/28/2026"
+   },
+   {
+    "fetched_at": "2026-10-28T21:58:45Z",
+    "publish_date": "10/28/2026"
+   },
+   {
+    "fetched_at": "2026-10-29T04:52:01Z",
+    "publish_date": "10/28/2026"
+   },
+   {
+    "fetched_at": "2026-10-29T11:11:18Z",
+    "publish_date": "10/28/2026"
+   },
+   {
+    "fetched_at": "2026-10-29T23:34:43Z",
+    "publish_date": "10/28/2026"
+   },
+   {
+    "fetched_at": "2026-10-30T05:53:13Z",
+    "publish_date": "10/28/2026"
+   }
+  ],
+  "first_seen_by_publish_date": {
+   "10/21/2026": "2026-10-27T00:39:48Z",
+   "10/28/2026": "2026-10-28T15:56:02Z"
+  },
+  "source": {
+   "path": "results/live_proof/LIVE_PROOF.md",
+   "sha256": "86191cc5d98572bc26a0290223d424b227916d44f447a932e52c24c802b49fbd"
+  }
+ },
+ "seals": {
+  "checked_at_utc": "2026-11-03T10:47:50Z",
+  "seals": [
+   {
+    "label": "sealed_early",
+    "batch": 0,
+    "root": "846fb9d67e4418f1d4da4d8e84033e5d1b68ad45e29259c0381934360a97545b",
+    "state": "confirmed",
+    "bitcoin_height": 974328,
+    "block_hash": "0000000000000000000100c90ac227a2c721176b8063f161daa6d9572dc38702",
+    "header_time": "2026-11-03T01:54:37Z",
+    "ok": true
+   },
+   {
+    "label": "sealed_late",
+    "batch": 1,
+    "root": "df265872ff227ece81b50cf29b4a0df8553604081c0bee8fc0c987076a92f754",
+    "state": "confirmed",
+    "bitcoin_height": 974328,
+    "block_hash": "0000000000000000000100c90ac227a2c721176b8063f161daa6d9572dc38702",
+    "header_time": "2026-11-03T01:54:37Z",
+    "ok": true
+   }
+  ],
+  "source": {
+   "path": "results/shared_receipts/real_seal/real_seal_upgrade.json",
+   "sha256": "6290a61d989766ab61f86713c3966af500808af2d9c639e0005b34a0bc466661"
+  },
+  "requests": {
+   "path": "results/shared_receipts/real_seal/NETWORK_REQUESTS.md",
+   "sha256": "bcf79af1eda4508313311410b305da065c0b1618b8a61bc72f1586c770171a90"
+  }
+ },
+ "mirror": {
+  "list_snapshot": "2bb34b1d2106ac17e6d5eb348f14b0e5d68ff2ff339a14785dc1b91b53d0a4bd",
+  "rulebook_version": "SDN-MIRROR-32610f3fd32b",
+  "decision_moment": "2023-08-24T09:00:00Z",
+  "list_entries": 151,
+  "sdn_mirror_commit": "32610f3fd32bce78250434ebefb8a1f90bebe543",
+  "anchored_independently": false,
+  "source": {
+   "path": "designation_receipts.json",
+   "sha256": "f1986021ba3a11b653957a0b6a3a22cf83b8a46200ed7cee4fe7183c25220e64"
+  },
+  "provenance": {
+   "path": "designation_receipts.provenance.json",
+   "sha256": "cc223cc6812cdb2a54eabe55ed3a720fe429720c8a02b5167d7bbe9dd7e1c887"
+  }
+ }
+}

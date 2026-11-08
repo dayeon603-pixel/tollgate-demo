@@ -1,0 +1,150 @@
+{
+ "schema": 1,
+ "rows": [
+  {
+   "stream": "USDC (Ethereum)",
+   "subset": "all",
+   "n": 201,
+   "designations": 40,
+   "A": "43.8% [10.8%, 72.7%]",
+   "B": "53.7% [25.5%, 86.7%]",
+   "C": "2.5% [0.0%, 8.3%]",
+   "gap": "56.2% [27.3%, 89.2%]",
+   "M": "39.8% [8.6%, 70.0%]",
+   "counts": {
+    "A": 88,
+    "B": 108,
+    "C": 5,
+    "M": 80,
+    "mirror_never_listed": 0
+   }
+  },
+  {
+   "stream": "USDC (Ethereum)",
+   "subset": "after 2023 12 09",
+   "n": 61,
+   "designations": 23,
+   "A": "6.6% [0.0%, 13.3%]",
+   "B": "93.4% [86.7%, 100.0%]",
+   "C": "0.0% [0.0%, 0.0%]",
+   "gap": "93.4% [86.7%, 100.0%]",
+   "M": "9.8% [3.0%, 18.6%]",
+   "counts": {
+    "A": 4,
+    "B": 57,
+    "C": 0,
+    "M": 6,
+    "mirror_never_listed": 0
+   }
+  },
+  {
+   "stream": "USDT (Ethereum)",
+   "subset": "all",
+   "n": 201,
+   "designations": 40,
+   "A": "70.1% [34.9%, 86.2%]",
+   "B": "28.4% [12.9%, 61.9%]",
+   "C": "1.5% [0.0%, 5.2%]",
+   "gap": "29.9% [13.8%, 65.1%]",
+   "M": "70.6% [35.6%, 86.5%]",
+   "counts": {
+    "A": 141,
+    "B": 57,
+    "C": 3,
+    "M": 142,
+    "mirror_never_listed": 0
+   }
+  },
+  {
+   "stream": "USDT (Ethereum)",
+   "subset": "after 2023 12 09",
+   "n": 61,
+   "designations": 23,
+   "A": "1.6% [0.0%, 6.5%]",
+   "B": "93.4% [84.2%, 100.0%]",
+   "C": "4.9% [0.0%, 13.0%]",
+   "gap": "98.4% [93.5%, 100.0%]",
+   "M": "3.3% [0.0%, 10.0%]",
+   "counts": {
+    "A": 1,
+    "B": 57,
+    "C": 3,
+    "M": 2,
+    "mirror_never_listed": 0
+   }
+  },
+  {
+   "stream": "USDT (Tron)",
+   "subset": "all",
+   "n": 331,
+   "designations": 43,
+   "A": "1.5% [0.3%, 5.8%]",
+   "B": "69.8% [33.1%, 94.2%]",
+   "C": "28.7% [4.2%, 64.8%]",
+   "gap": "98.5% [94.2%, 99.7%]",
+   "M": "1.5% [0.3%, 5.8%]",
+   "counts": {
+    "A": 5,
+    "B": 231,
+    "C": 95,
+    "M": 5,
+    "mirror_never_listed": 0
+   }
+  },
+  {
+   "stream": "USDT (Tron)",
+   "subset": "after 2023 12 09",
+   "n": 328,
+   "designations": 40,
+   "A": "0.6% [0.0%, 2.9%]",
+   "B": "70.4% [34.0%, 95.1%]",
+   "C": "29.0% [4.2%, 65.1%]",
+   "gap": "99.4% [97.1%, 100.0%]",
+   "M": "0.6% [0.0%, 2.9%]",
+   "counts": {
+    "A": 2,
+    "B": 231,
+    "C": 95,
+    "M": 2,
+    "mirror_never_listed": 0
+   }
+  }
+ ],
+ "definitions": "Pre-registered in `docs/PREREG_PROOF_GAP.md`. A = official OFAC posting date is a calendar day before the freeze (provable from official public data); B = same New York date (not provable: the page has a date, the freeze a second); C = freeze dated before the posting. Proof gap = B + C. M = the unofficial mirror listed the address before the freeze, to the second. Intervals: cluster bootstrap over designations, B = 10000, seed 20261026. Evidence of ordering only, not of legality.",
+ "adds": "What a Tollgate receipt adds: a receipt issued at decision time binds the decision to the hash of the list snapshot in force and the decision time, signed and chained, checkable offline to the second. It covers only decisions Tollgate recorded. For past freezes, `scripts/audit_freeze.py` can bind only to the mirror (column M).",
+ "not_checked": "Not checked: whether another official source (press-release times, OFAC email notices, Federal Register filing times) timestamps a listing within its day. If one does, column B would shrink. The OFAC recent-actions pages used here carry a date only.",
+ "bootstrap": {
+  "b": 10000,
+  "seed": 20261026,
+  "unit": "designation"
+ },
+ "source": {
+  "path": "results/proof_gap/REPORT.md",
+  "sha256": "cf4c8501b794ffb62678024d23ed3548845694838034303005428fe37b896f71"
+ },
+ "source_json": {
+  "path": "results/proof_gap/report.json",
+  "sha256": "0bcea8ea625c081d030baa4b68bc84d89e2aa11810b9964a697546923f69ce37"
+ },
+ "prereg": "docs/PREREG_PROOF_GAP.md",
+ "live": {
+  "headline": "Since 2026-10-26T05:51:19Z, 7 of 10 freezes of a newly listed address we saw have a provable order against their listing from our anchored receipts.",
+  "t0": "2026-10-26T05:51:19Z",
+  "t1": "2026-10-30T10:27:15Z",
+  "receipts": 232,
+  "anchored": 232,
+  "bitcoin_confirmed": 232,
+  "N": 10,
+  "k": 7,
+  "M": 0,
+  "batches": 20,
+  "source": {
+   "path": "results/live_proof/LIVE_PROOF.md",
+   "sha256": "86191cc5d98572bc26a0290223d424b227916d44f447a932e52c24c802b49fbd"
+  },
+  "summary": {
+   "path": "results/live_proof/summary.json",
+   "sha256": "d592be8569d74292020ccbc0765619b6c09892b7c94dea47336baf30313870c4"
+  }
+ }
+}

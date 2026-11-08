@@ -12,12 +12,14 @@ import { SCHEMA } from './persist.js';
  *   earlier visit to replay after the history; seed, for the synthetic data.
  * Returns: { ws, held, replayError } where replayError is a message when saved ops could not be
  *   replayed (the workspace then holds only the seeded history).
+ * `network` (optional) is the DemoNetwork whose members take part in the seeded network history;
+ * without it the workspace has no receipt-network history.
  */
-export async function createWorkspace({ list, anchor, savedOps = [], seed }) {
+export async function createWorkspace({ list, anchor, savedOps = [], seed, network = null }) {
   const built = await buildVersions(list);
   const make = async () => {
     const ws = new Workspace({ versions: built.versions });
-    await seedWorkspace(ws, { anchor, held: built, seed });
+    await seedWorkspace(ws, { anchor, held: built, seed, network });
     return ws;
   };
   let ws = await make();

@@ -157,7 +157,7 @@ export function receiptView(ctx, receiptId) {
 export function renderActivity(ctx, root) {
   const { ws } = ctx;
   clear(root);
-  const groups = [{ value: 'all', label: 'Everything' }, { value: 'screening', label: 'Screenings' }, { value: 'cases', label: 'Case work' }, { value: 'lists', label: 'Lists and watchlist' }, { value: 'admin', label: 'Policy, roles, exports' }, { value: 'ledger', label: 'Ledger' }];
+  const groups = [{ value: 'all', label: 'Everything' }, { value: 'screening', label: 'Screenings' }, { value: 'cases', label: 'Case work' }, { value: 'lists', label: 'Lists and watchlist' }, { value: 'admin', label: 'Policy, roles, exports' }, { value: 'network', label: 'Receipt network and gate' }, { value: 'ledger', label: 'Ledger' }];
   const actors = [{ value: 'all', label: 'Anyone' }, { value: 'api', label: 'API (demo feed)' }, { value: 'system', label: 'System' }, ...ws.users.map((u) => ({ value: u.id, label: u.name }))];
   const host = h('div', {});
   const draw = () => {

@@ -6,6 +6,7 @@
  * The history is produced by feeding ops to the real engine, so every alert has a genuine receipt
  * trail and the numbers on the dashboard are computed from the same state the rest of the app uses.
  */
+import { planGateSeed, planNetworkSeed } from './net-flow.js';
 import { between, DAY_MS, fakeEthAddress, fakeTronAddress, HOUR_MS, pick, rng, startOfUtcDay } from './util.js';
 
 export const HISTORY_DAYS = 30;
@@ -91,7 +92,7 @@ function lifecycle(alert, rand, users) {
  *   held, { heldLatest, heldMiddle } from buildVersions; seed, makes the data reproducible.
  * Returns: the number of ops applied.
  */
-export async function seedWorkspace(ws, { anchor, held, seed = 20261106, days = HISTORY_DAYS }) {
+export async function seedWorkspace(ws, { anchor, held, seed = 20261106, days = HISTORY_DAYS, network = null }) {
   const rand = rng(seed);
   const users = { a: 'analyst-a', b: 'analyst-b', c: 'approver-c', d: 'admin-d' };
   const pool = pools(ws.versions, held.heldLatest, held.heldMiddle);
@@ -132,12 +133,21 @@ export async function seedWorkspace(ws, { anchor, held, seed = 20261106, days = 
     }
   }
 
+  network?.reset();
+  // The network history draws from its own generator, so adding it never changes the payments above.
+  if (network) {
+    const netRand = rng(seed ^ 0x6e657477);
+    const plan = { rand: netRand, at, days, end, users };
+    queue.push(...planNetworkSeed(network, { ...plan, listed: pool.stable, counterparties: counterparties.slice(0, 20) }));
+    queue.push(...planGateSeed(plan));
+  }
+
   let applied = 0;
   for (;;) {
     queue.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
     const next = queue.shift();
     if (!next || Date.parse(next.ts) > end) break;
-    const result = await ws.apply(next);
+    const result = next.run ? (await next.run(ws)) ?? {} : await ws.apply(next);
     applied++;
     for (const alert of result.created ?? []) for (const op of lifecycle(alert, rand, users)) if (Date.parse(op.ts) <= end) queue.push(op);
   }

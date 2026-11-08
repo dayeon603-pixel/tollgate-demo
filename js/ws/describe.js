@@ -11,6 +11,7 @@ export const TYPE_LABELS = {
   stablecoin_payment_screen: 'Screening', case_action: 'Case action', list_update: 'List update', lookback_hit: 'Lookback hit',
   watchlist_add: 'Watchlist add', watchlist_remove: 'Watchlist remove', watchlist_rescreen: 'Watchlist re-screen',
   policy_change: 'Policy change', role_change: 'Role change', evidence_export: 'Evidence export', segment_open: 'Segment open',
+  network_trust_change: 'Network key change', network_reliance: 'Inbound receipt', gate_decision: 'Payment gate',
 };
 
 /** Which filter group a receipt type belongs to in the activity log. */
@@ -19,6 +20,7 @@ export const TYPE_GROUPS = {
   cases: ['case_action', 'lookback_hit'],
   lists: ['list_update', 'watchlist_add', 'watchlist_remove', 'watchlist_rescreen'],
   admin: ['policy_change', 'role_change', 'evidence_export'],
+  network: ['network_trust_change', 'network_reliance', 'gate_decision'],
   ledger: ['segment_open'],
 };
 
@@ -47,6 +49,17 @@ export function describe(ws, entry) {
     case 'policy_change': return { actor: actorName(ws, p.actor), text: `Changed ${p.setting} from ${p.from} to ${p.to}` };
     case 'role_change': return { actor: actorName(ws, p.actor), text: `Changed ${p.user_id} from ${p.from} to ${p.to}` };
     case 'evidence_export': return { actor: actorName(ws, p.actor), text: `Exported an evidence pack: ${p.receipts_in_pack} receipts in ${p.segments_in_pack} segments` };
+    case 'network_trust_change': {
+      const verb = { register: 'Registered', pin: 'Pinned', revoke: 'Revoked' }[p.action] ?? p.action;
+      return { actor: actorName(ws, p.actor), text: `${verb} the key of ${p.member_name}${p.reason ? `: ${p.reason}` : ''}` };
+    }
+    case 'network_reliance': {
+      const who = p.issuer_name ?? 'an unregistered sender';
+      if (p.outcome === 'ACCEPTED') return { actor: actorName(ws, p.actor), text: `Relied on ${who}'s receipt for ${shortAddr(p.beneficiary_address)}; no second screening` };
+      if (p.outcome === 'NONE') return { actor: actorName(ws, p.actor), text: `Inbound payment to ${shortAddr(p.beneficiary_address)} came with no receipt; screened here` };
+      return { actor: actorName(ws, p.actor), text: `Refused ${who}'s receipt for ${shortAddr(p.beneficiary_address)} (${p.reason_codes.join(', ')}); screened here` };
+    }
+    case 'gate_decision': return { actor: actorName(ws, p.actor), text: `Gate ${p.gate === 'RELEASE' ? 'released' : `blocked (${p.reason_codes.join(', ')})`} a transfer to ${shortAddr(p.beneficiary_address)}${p.amount_usd !== undefined ? ` for ${money(p.amount_usd)}` : ''}` };
     case 'segment_open': return { actor: 'System', text: `Opened ledger segment ${p.segment_id} (${p.reason})` };
     default: return { actor: '', text: `${action.type} ${verdict.decision}` };
   }
