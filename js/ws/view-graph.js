@@ -1,16 +1,9 @@
 /** Counterparty graph: counterparties of one address (one or two hops) in this demo's synthetic payments. */
 import { card, clear, copyButton, dataTable, empty, h, icon, kv, money, segmented, shortAddr, stamp } from './dom.js';
-import { addressProfile, buildGraph, busiestAddress, collectPayments, flowModel, GRAPH_HOPS, GRAPH_MAX_NODES, suggestedAddresses } from './graph.js';
-import { esc, mount, seriesColour, tooltipBase } from './echart.js';
+import { addressProfile, buildGraph, busiestAddress, collectPayments, GRAPH_HOPS, GRAPH_MAX_NODES, suggestedAddresses } from './graph.js';
 
-const FALLBACK_WIDTH = 900;
-const NARROW_PX = 600;
 const SUGGESTIONS = 14;
 const ALERT_LINKS = 3;
-const ROW_PX = 40;
-const MIN_H = 300;
-/** Room beside the outer columns for "0x1234…abcd · $12,345 On list". */
-const LABEL_PX = 210;
 const st = { address: '', hops: 1, selected: '', expanded: {} };
 export const GRAPH_CAPTION = 'Demo payments. Exact list matches only, no risk scoring.';
 
@@ -54,130 +47,44 @@ export function renderGraph(ctx, root) {
   hops.id = 'gr-hops';
   hops.classList.add('seg--flat');
 
-  // Funds flow (Apache ECharts sankey): money in on the left, the centre, money out on the right --------
-  const canvas = h('div', { class: 'graphcanvas', id: 'gr-canvas' });
-  const host = h('div', { class: 'echost', id: 'gr-chart', tabindex: 0, role: 'group', 'aria-roledescription': 'funds flow',
-    'aria-label': `Money in and out of ${st.address}, ${st.hops} hop${st.hops > 1 ? 's' : ''}. ${GRAPH_CAPTION} Arrow keys move between addresses, Enter selects.` });
-  const announce = h('p', { class: 'sr', id: 'gr-tip', role: 'status', 'aria-live': 'polite' });
+  // Ranked counterparties: who paid this address and who it paid, largest first --------------------
+  const LIST_TOP = 10;
   const panel = h('aside', { class: 'graphside', id: 'gr-panel', 'aria-label': 'Selected address' });
-  const model = flowModel(graph, { expanded: st.expanded });
-  const order = model.nodes;
-  let focusIdx = -1;
-  const isNarrow = () => (canvas.clientWidth || FALLBACK_WIDTH) < NARROW_PX;
-  const rows = Math.max(1, ...['L2', 'L1', 'C', 'R1', 'R2'].map((c) => model.nodes.filter((n) => n.col === c).length));
-  const heightFor = () => Math.max(MIN_H, rows * ROW_PX + 24);
-
-  const sideTotal = (col) => model.nodes.filter((n) => n.col === col).reduce((t, n) => t + n.usd, 0);
-  const sharePct = (n) => { const tot = sideTotal(n.col === 'L1' || n.col === 'L2' ? 'L1' : 'R1'); return !isNarrow() && tot > 0 && (n.col === 'L1' || n.col === 'R1') ? `${Math.round((100 * n.usd) / tot)}%` : ''; };
-  const nodeLabel = (n) => (n.more ? `+${n.more.n} more · ${money(n.usd)}` : `${shortAddr(n.address)} · ${money(n.usd)}`);
-  const tipFor = (n) => {
-    if (n.more) return `<div class="ect__head">${n.more.n} more addresses</div><div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(n.usd))}</span></div><div class="ect__note">Click to show them.</div>`;
-    const side = n.col === 'C' ? 'Centre' : n.col.startsWith('L') ? (n.col === 'L1' ? 'Paid the centre' : 'Paid a sender') : (n.col === 'R1' ? 'Paid by the centre' : 'Paid by a receiver');
-    return `<div class="ect__head">${esc(side)}</div><div class="ect__mono">${esc(shortAddr(n.address))}</div>${n.col === 'C' ? '' : `<div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(n.usd))}</span></div>`}<div class="ect__row"><span class="ect__k">Payments</span><span class="ect__v">${n.count}</span></div>${n.listed ? `<div class="ect__bad">On the list: ${esc(n.entries[0].name)}</div>` : ''}`;
+  const directNodes = graph.nodes.filter((n) => n.hop !== 2);
+  const sideRows = (key) => directNodes.filter((n) => n[key] > 0).map((n) => ({ ...n, usd: n[key] })).sort((a, b) => b.usd - a.usd || a.address.localeCompare(b.address));
+  const ranked = (title, key, id) => {
+    const rows = sideRows(key);
+    const total = rows.reduce((t, r) => t + r.usd, 0);
+    const max = rows[0]?.usd || 1;
+    const open = Boolean(st.expanded[id]);
+    const shown = open ? rows : rows.slice(0, LIST_TOP);
+    const list = h('ol', { class: 'rank' }, shown.map((r, i) => {
+      const sel = lower(st.selected) === lower(r.address);
+      return h('li', { class: `rank__row${r.listed ? ' rank__row--bad' : ''}${sel ? ' is-selected' : ''}`, 'data-address': r.address },
+        h('span', { class: 'rank__n', text: String(i + 1) }),
+        h('button', { type: 'button', class: 'rank__addr mono', title: `${r.address}. Double-click to centre on it.`, on: { click: () => select(r.address), dblclick: () => pivot(r.address) } }, shortAddr(r.address)),
+        r.listed ? h('span', { class: 'chip chip--bad rank__tag', text: 'On list' }) : h('span', { class: 'rank__tag' }),
+        h('span', { class: 'rank__bar', 'aria-hidden': 'true' }, h('span', { class: 'rank__fill', style: undefined, 'data-w': String(Math.max(2, Math.round((100 * r.usd) / max))) })),
+        h('span', { class: 'rank__usd', text: money(r.usd) }),
+        h('span', { class: 'rank__pct', text: total ? `${((100 * r.usd) / total).toFixed(1)}%` : '' }));
+    }));
+    const toggle = rows.length > LIST_TOP
+      ? h('button', { type: 'button', class: 'linkbtn rank__more', id: `${id}-more`, on: { click: () => { st.expanded = { ...st.expanded, [id]: !open }; ctx.refresh(); } } }, open ? `Show top ${LIST_TOP}` : `Show all ${rows.length}`)
+      : null;
+    return h('section', { class: `rankcard rankcard--${key === 'sentUsd' ? 'in' : 'out'}`, id, 'aria-label': title },
+      h('header', { class: 'rankcard__head' }, h('h3', { text: title }), h('span', { class: 'rankcard__sum', text: `${money(total)} · ${rows.length} address${rows.length === 1 ? '' : 'es'}` })),
+      rows.length ? list : h('p', { class: 'field__hint', text: 'None in the demo payments.' }), toggle);
   };
-
-  function build(t) {
-    const narrow = isNarrow();
-    const bad = seriesColour('block');
-    const plain = t.dark ? '#7d8a93' : '#76838c';
-    const inC = seriesColour('allow');
-    const outC = t.dark ? '#94a3b8' : '#64748b';
-    const selKey = lower(st.selected || st.address);
-    const focusId = order[focusIdx]?.id;
-    const lastDepth = st.hops === 2 ? 4 : 2;
-    // Two hops: the inner columns sit close to the centre, so their labels carry the address only (the amount is in the tooltip and the table).
-    const terse = (n) => st.hops === 2 && (n.col === 'L1' || n.col === 'R1');
-    const pads = Array.from({ length: lastDepth + 1 }, (_, d) => d).filter((d) => !model.nodes.some((n) => n.depth === d));
-    const labelSide = (n) => {
-      if (n.col === 'C') return 'bottom';
-      const leftSide = n.depth < model.nodes[0].depth;
-      // Outer columns label outward; inner columns of a two-hop view label towards the centre, so labels never sit on another column.
-      const inner = st.hops === 2 && (n.col === 'L1' || n.col === 'R1');
-      if (narrow || inner) return leftSide ? 'right' : 'left';
-      return leftSide ? 'left' : 'right';
-    };
-    return {
-      animation: false,
-      tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => {
-        if (p.dataType === 'edge') { const l = p.data; return `<div class="ect__row"><span class="ect__k">Payments</span><span class="ect__v">${l.count}</span></div><div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(l.value))}</span></div>`; }
-        return p.data?._n ? tipFor(p.data._n) : '';
-      } },
-      series: [{
-        id: 'flow', type: 'sankey', layoutIterations: 0, nodeAlign: 'justify', draggable: false,
-        left: narrow ? 6 : LABEL_PX, right: narrow ? 6 : LABEL_PX,
-        top: 12, bottom: narrow ? 12 : 30,
-        nodeWidth: 6, nodeGap: 14,
-        data: [...model.nodes.map((n) => {
-          const sel = n.address && lower(n.address) === selKey;
-          const focused = n.id === focusId;
-          return {
-            name: n.id, depth: n.depth, _n: n,
-            itemStyle: { color: n.listed ? bad : n.col === 'C' ? t.ink : n.more ? t.lineStrong : n.col.startsWith('L') ? inC : outC, borderColor: (sel && n.col !== 'C') || focused ? t.focus : 'transparent', borderWidth: (sel && n.col !== 'C') || focused ? 2 : 0 },
-            label: {
-              show: true, position: labelSide(n), distance: 6,
-              formatter: () => (n.col === 'C' ? `{c|${shortAddr(n.address)}}${n.listed ? ' {tag|On list}' : ''}` : n.more ? `{more|${nodeLabel(n)}}` : `{a|${terse(n) ? `${n.address.slice(0, 6)}…${n.address.slice(-4)}` : shortAddr(n.address)}}${terse(n) ? '' : `  {v|${money(n.usd)}}${sharePct(n) ? `{p|${sharePct(n)}}` : ''}`}${n.listed ? ' {tag|On list}' : ''}`),
-              rich: {
-                a: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.mono, fontSize: narrow ? 10.5 : 11, color: n.listed ? bad : t.dim, fontWeight: n.listed ? 600 : 400 },
-                c: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.mono, fontSize: 11.5, color: n.listed ? bad : t.ink, fontWeight: 600 },
-                v: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: narrow ? 11 : 12, color: t.ink, fontWeight: 600 },
-                p: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: narrow ? 10.5 : 11, color: t.dim, padding: [0, 0, 0, 6] },
-                more: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: 11.5, color: t.link || t.focus, fontWeight: 600 },
-                tag: { fontFamily: t.sans, fontSize: 10, fontWeight: 700, color: '#fff', backgroundColor: bad, borderRadius: 3, padding: [1, 4] },
-              },
-              backgroundColor: narrow ? t.surface : 'transparent', padding: narrow ? [1, 3] : 0, borderRadius: 2,
-            },
-          };
-        }), ...pads.map((d) => ({ name: `pad-${d}`, depth: d, value: 0, itemStyle: { opacity: 0 }, label: { show: false }, tooltip: { show: false }, silent: true }))],
-        // Empty columns keep their place, so the centre stays in the middle when one side has no payments.
-        links: model.links.map((l) => ({ source: l.source, target: l.target, value: Math.max(l.usd, 1), count: l.count })),
-        lineStyle: { color: 'source', opacity: t.dark ? 0.22 : 0.18, curveness: 0.5 },
-        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.45 } },
-        labelLayout: { hideOverlap: true },
-      }],
-    };
-  }
-
-  const chart = mount(host, build, (inst) => {
-    inst.on('click', (p) => {
-      const n = p.data?._n;
-      if (!n || p.dataType !== 'node') return;
-      if (n.more) { st.expanded = { ...st.expanded, [n.col]: true }; ctx.refresh(); return; }
-      select(n.address);
-    });
-    inst.on('dblclick', (p) => { const n = p.data?._n; if (n && !n.more && n.col !== 'C') pivot(n.address); });
-  });
-
+  const lists = h('div', { class: 'ranks', id: 'gr-chart', 'data-nodes': String(directNodes.length) },
+    ranked('Money in, by sender', 'sentUsd', 'gr-in'),
+    ranked('Money out, by receiver', 'receivedUsd', 'gr-out'));
+  // Bar widths are set from data attributes so the page needs no inline style attribute (CSP).
+  const sizeBars = () => lists.querySelectorAll('.rank__fill').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
   const select = (address) => {
     st.selected = address;
-    host.dataset.selected = address;
-    chart.render();
+    lists.querySelectorAll('.rank__row').forEach((row) => row.classList.toggle('is-selected', lower(row.dataset.address) === lower(address)));
     drawPanel();
   };
-  const sizeHost = () => { host.style.height = `${heightFor()}px`; };
-
-  const focusNode = (i) => {
-    focusIdx = (i + order.length) % order.length;
-    const n = order[focusIdx];
-    chart.render();
-    chart.chart()?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: focusIdx });
-    announce.textContent = n.more ? `${n.more.n} more addresses, ${money(n.usd)}. Press Enter to show them.` : `${n.col === 'C' ? 'Centre, ' : n.col.startsWith('L') ? 'Money in from ' : 'Money out to '}${shortAddr(n.address)}${n.listed ? ', exact match on the list' : ''}${n.col === 'C' ? '' : `, ${money(n.usd)}`}. Press Enter to inspect.`;
-    host.dataset.focus = n.address ?? n.id;
-  };
-  host.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); focusNode(focusIdx + 1); }
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); focusNode(focusIdx - 1); }
-    else if ((e.key === 'Enter' || e.key === ' ') && focusIdx >= 0) {
-      e.preventDefault();
-      const n = order[focusIdx];
-      if (n.more) { st.expanded = { ...st.expanded, [n.col]: true }; ctx.refresh(); } else select(n.address);
-    } else if (e.key === 'Escape') { focusIdx = -1; delete host.dataset.focus; chart.chart()?.dispatchAction({ type: 'hideTip' }); chart.render(); }
-  });
-  host.addEventListener('blur', () => { chart.chart()?.dispatchAction({ type: 'hideTip' }); });
-  const heads = h('div', { class: 'flowheads', 'aria-hidden': 'true' },
-    h('span', { text: `Money in${st.hops === 2 ? ' (2 hops)' : ''} · ${money(sideTotal('L1'))}` }), h('span', { text: `Money out${st.hops === 2 ? ' (2 hops)' : ''} · ${money(sideTotal('R1'))}` }));
-  const anyMore = Object.values(st.expanded).some(Boolean);
-  const collapse = anyMore ? h('button', { type: 'button', class: 'btn btn--ghost', id: 'gr-collapse', on: { click: () => { st.expanded = {}; ctx.refresh(); } } }, 'Show top 8 only') : null;
-  const more = graph.hidden ? h('p', { class: 'gmore', id: 'gr-more', text: `${graph.hidden} more not loaded (at most ${GRAPH_MAX_NODES} addresses)` }) : null;
 
   // Side panel --------------------------------------------------------------------------------
   function drawPanel() {
@@ -209,18 +116,9 @@ export function renderGraph(ctx, root) {
   }
 
   // Page --------------------------------------------------------------------------------------
-  const legend = h('ul', { class: 'legend legend--inline' },
-    h('li', {}, h('span', { class: 'flowkey flowkey--in', 'aria-hidden': 'true' }), 'Sender'),
-    h('li', {}, h('span', { class: 'flowkey', 'aria-hidden': 'true' }), 'Receiver'),
-    h('li', {}, h('span', { class: 'flowkey flowkey--bad', 'aria-hidden': 'true' }), 'On the list in force'),
-    h('li', { class: 'legend__note' }, 'Width = USD value'),
-    collapse ? h('li', {}, collapse) : null);
-
   const body = graph.nodes.length
-    ? h('div', { class: 'graphlayout' }, h('div', { class: 'graphmain' }, canvas, legend), panel)
+    ? h('div', { class: 'graphlayout' }, h('div', { class: 'graphmain' }, lists), panel)
     : empty('No payments for this address in the demo.', 'Pick a suggested address, or paste one that appears in the receipt explorer.');
-  canvas.append(heads, host, announce);
-  if (more) canvas.append(more);
 
   const table = graph.nodes.length ? dataTable({
     caption: 'Counterparties', rows: graph.nodes, rowKey: (n) => n.address,
@@ -265,16 +163,11 @@ export function renderGraph(ctx, root) {
       metrics,
       h('p', { class: 'field__hint', id: 'gr-summary', text: `${summary} ${GRAPH_CAPTION}` }),
       body)),
-    table ? card(st.hops === 2 ? 'Counterparties within two hops, as a table' : 'Counterparties as a table', { id: 'gr-table' }, table) : null].filter(Boolean));
+    table ? card(st.hops === 2 ? 'All addresses within two hops' : 'All counterparties', { id: 'gr-table' }, table) : null].filter(Boolean));
 
   if (graph.nodes.length) {
     drawPanel();
-    sizeHost();
-    host.dataset.selected = st.selected;
-    host.dataset.nodes = String(model.nodes.length);
-    host.dataset.centreListed = String(Boolean(graph.center.listed));
-    let narrowNow = null;
-    new ResizeObserver(() => { const n = isNarrow(); if (n !== narrowNow) { narrowNow = n; chart.render(); } }).observe(canvas);
+    sizeBars();
   }
   fade();
   void icon;

@@ -61,20 +61,8 @@ def open_app(browser: Browser, base: str, size: tuple[int, int], prefs: dict | N
     return page
 
 
-NODES_JS = "() => Number(document.getElementById('gr-chart')?.dataset.nodes || 0)"
-READY_JS = "() => { const el = document.getElementById('gr-chart'); return el && window.echarts && echarts.getInstanceByDom(el); }"
-# Page position of the drawn node at index i (0 is the centre), read from the chart itself.
-NODE_AT_JS = """i => { const el = document.getElementById('gr-chart'); el.scrollIntoView({ block: 'center' }); const c = echarts.getInstanceByDom(el);
-  const g = c.getModel().getSeriesByIndex(0).getData().getItemGraphicEl(i); const b = g.getBoundingRect().clone(); b.applyTransform(g.getComputedTransform());
-  const r = el.getBoundingClientRect();
-  return { x: r.left + b.x + b.width / 2, y: r.top + b.y + Math.min(b.height / 2, 8), inside: b.x >= -0.5 && b.y >= -0.5 && b.x + b.width <= r.width + 0.5 && b.y + b.height <= r.height + 0.5 }; }"""
-# Label boxes of the drawn nodes, read from the chart; any two that intersect is a collision.
-LABEL_OVERLAP_JS = """() => { const c = echarts.getInstanceByDom(document.getElementById('gr-chart')); const d = c.getModel().getSeriesByIndex(0).getData(); const boxes = [];
-  for (let i = 0; i < d.count(); i++) { const g = d.getItemGraphicEl(i); const t = g && g.getTextContent(); if (!t || t.ignore || t.invisible || !t.style.text) continue;
-    const b = t.getBoundingRect().clone(); b.applyTransform(t.getComputedTransform()); if (b.width > 1) boxes.push(b); }
-  let n = 0; for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i], b = boxes[j];
-    if (a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1) n++; }
-  return { labels: boxes.length, overlaps: n }; }"""
+ROWS_JS = "() => document.querySelectorAll('#gr-chart .rank__row').length"
+ROW_TEXT_OVERFLOW_JS = """() => Array.from(document.querySelectorAll('#gr-chart .rank__row > *')).filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).display !== 'none').length"""
 
 
 def graph_checks(browser: Browser, base: str, shots: Path) -> None:
@@ -82,9 +70,7 @@ def graph_checks(browser: Browser, base: str, shots: Path) -> None:
         for label, size in WIDTHS.items():
             page = open_app(browser, base, size, {"theme": theme})
             page.goto(urljoin(base, "app.html#graph"))
-            page.wait_for_selector("#gr-chart", timeout=15000)
-            page.wait_for_function(READY_JS)
-            page.wait_for_timeout(300)
+            page.wait_for_selector("#gr-chart .rank__row", timeout=15000)
             stray = page.evaluate(STRAY_JS)
             expect(not stray, f"graph {theme} {label}: nothing outside the viewport ({stray})")
             over = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
@@ -94,49 +80,40 @@ def graph_checks(browser: Browser, base: str, shots: Path) -> None:
             expect(counts[0] == max(counts), f"graph {theme} {label}: first starting point is the busiest ({counts[:4]})")
             first_title = chips.first.get_attribute("title") or ""
             expect(first_title.startswith(page.locator("#gr-selected").inner_text()), f"graph {theme} {label}: default selection is the busiest address")
-            one = page.evaluate(NODES_JS)
-            inside = [page.evaluate(NODE_AT_JS, i)["inside"] for i in range(one)]
-            expect(all(inside), f"graph {theme} {label}: every node is drawn inside the canvas")
-            lab = page.evaluate(LABEL_OVERLAP_JS)
-            expect(lab["labels"] >= one - 1 and lab["overlaps"] == 0, f"graph {theme} {label}: every node labelled, no labels overlap ({lab})")
-            expect(one >= MIN_NODES, f"graph {theme} {label}: {one} nodes at 1 hop")
+            nodes = int(page.locator("#gr-chart").get_attribute("data-nodes") or 0)
+            expect(nodes >= MIN_NODES, f"graph {theme} {label}: {nodes} direct counterparties")
+            usd = [float(t.replace("$", "").replace(",", "")) for t in page.locator("#gr-in .rank__usd").all_inner_texts()]
+            expect(usd == sorted(usd, reverse=True) and len(usd) > 0, f"graph {theme} {label}: senders ranked largest first ({usd[:4]})")
+            expect(len(usd) <= 10, f"graph {theme} {label}: top 10 shown by default ({len(usd)})")
+            expect(page.evaluate(ROW_TEXT_OVERFLOW_JS) == 0, f"graph {theme} {label}: no clipped text in the ranked rows")
+            expect(page.locator("#gr-metrics .kpi").count() == 6, f"graph {theme} {label}: six flow metrics shown")
             expect(page.locator("#gr-panel").is_visible() and len(page.locator("#gr-panel-address").inner_text()) >= 40, f"graph {theme} {label}: side panel shows the full address")
             page.screenshot(path=str(shots / f"graph1_{theme}_{label}.png"), full_page=True)
+            if page.locator("#gr-in-more").count():
+                before = page.evaluate(ROWS_JS)
+                page.click("#gr-in-more")
+                page.wait_for_function("n => document.querySelectorAll('#gr-chart .rank__row').length > n", arg=before)
+                expect(page.locator("#gr-in-more").inner_text().startswith("Show top"), f"graph {theme} {label}: Show all expands and offers to fold back")
+                page.click("#gr-in-more")
             page.click("#gr-hops button:has-text('2')")
-            page.wait_for_function("n => Number(document.getElementById('gr-chart')?.dataset.nodes || 0) > n", arg=one)
-            page.wait_for_function(READY_JS)
-            two = page.evaluate(NODES_JS)
-            expect(two > one, f"graph {theme} {label}: 2 hops draws more nodes ({one} to {two})")
+            page.wait_for_selector("#gr-table")
             expect(not page.evaluate(STRAY_JS), f"graph {theme} {label}: 2 hops stays inside the viewport")
-            lab = page.evaluate(LABEL_OVERLAP_JS)
-            expect(lab["overlaps"] == 0, f"graph {theme} {label}: 2 hops labels do not overlap ({lab})")
-            page.wait_for_timeout(200)
             page.screenshot(path=str(shots / f"graph2_{theme}_{label}.png"), full_page=True)
             if label == "1440" and theme == "dark":
-                view = page.locator("#gr-chart")
-                more = page.evaluate("() => echarts.getInstanceByDom(document.getElementById('gr-chart')).getOption().series[0].data.findIndex((d) => d._n && d._n.more)")
-                if more >= 0:
-                    before_nodes = page.evaluate(NODES_JS)
-                    pos = page.evaluate(NODE_AT_JS, more)
-                    page.mouse.click(pos["x"], pos["y"])
-                    page.wait_for_function("n => Number(document.getElementById('gr-chart')?.dataset.nodes || 0) > n", arg=before_nodes)
-                    expect(page.locator("#gr-collapse").is_visible(), "graph: clicking +N more expands the column and offers to collapse it")
-                    page.click("#gr-collapse")
-                    page.wait_for_function(READY_JS)
-                    view = page.locator("#gr-chart")
-                view.focus()
-                page.keyboard.press("ArrowRight")
-                page.keyboard.press("ArrowRight")
-                page.wait_for_timeout(200)
-                expect(page.locator("#gr-canvas .ect").first.is_visible() and len(page.locator("#gr-tip").inner_text()) > 10, "graph: arrow keys move to a node, show its tooltip and announce it")
-                focused = view.get_attribute("data-focus")
+                page.click("#gr-hops button:has-text('1')")
+                page.wait_for_selector("#gr-in .rank__addr")
+                target = page.locator("#gr-in .rank__addr").nth(2)
+                addr_short = target.inner_text()
+                target.click()
+                expect(page.locator("#gr-in .rank__row.is-selected .rank__addr").inner_text() == addr_short, "graph: clicking a row selects it")
+                expect(page.locator("#gr-panel-address").inner_text()[:6] == addr_short[:6], "graph: panel shows the selected address")
+                expect(page.locator("#gr-receipts, #gr-panel [data-alert], #gr-centre").count() >= 1, "graph: panel offers actions for the selected address")
+                target.focus()
                 page.keyboard.press("Enter")
-                expect(view.get_attribute("data-selected") == focused and page.locator("#gr-panel-address").inner_text() == focused, "graph: Enter on the focused node selects it")
-                pos = page.evaluate(NODE_AT_JS, 3)
-                page.mouse.click(pos["x"], pos["y"])
-                page.wait_for_timeout(150)
-                expect(view.get_attribute("data-selected") != focused, "graph: clicking a node selects it")
-                expect(page.locator("#gr-receipts, #gr-panel [data-alert], #gr-centre").count() >= 1, "graph: panel offers actions for the selected node")
+                expect(page.locator("#gr-panel-address").inner_text()[:6] == addr_short[:6], "graph: Enter on a row selects it")
+                page.locator("#gr-in .rank__addr").nth(2).dblclick()
+                page.wait_for_function("a => document.getElementById('gr-selected').textContent.startsWith(a)", arg=addr_short[:6])
+                expect(True, "graph: double-click centres on the address")
             page.context.close()
 
 
