@@ -131,3 +131,15 @@
 .matrixtable td.yes { font-weight: 650; }
 
 /* The charts now draw at true pixel size, so the phone rule that enlarged axis text for a scaled drawing no longer applies. */
+
+/* Proof gap, plain reading */
+:root { --c-seg-b: #a7b0b7; }
+:root[data-theme='dark'] { --c-seg-b: #66727b; }
+.pg-lead { font-size: 16px; line-height: 1.45; color: var(--ink); max-width: 62ch; margin: 0 0 6px; }
+.pg-legend { margin: 0 0 10px; font-size: 13px; }
+.pg-ci { display: block; color: var(--faint); font-size: 11px; font-weight: 400; }
+.pg-method > summary { cursor: pointer; list-style: none; }
+.pg-method > summary::-webkit-details-marker { display: none; }
+.pg-method > summary .card__title::before { content: '▸ '; color: var(--faint); }
+.pg-method[open] > summary .card__title::before { content: '▾ '; }
+.pg-method .tablewrap { overflow-x: auto; margin: 8px 0; }

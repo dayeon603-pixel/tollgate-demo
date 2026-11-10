@@ -86,7 +86,7 @@ def graph_checks(browser: Browser, base: str, shots: Path) -> None:
             expect(usd == sorted(usd, reverse=True) and len(usd) > 0, f"graph {theme} {label}: senders ranked largest first ({usd[:4]})")
             expect(len(usd) <= 10, f"graph {theme} {label}: top 10 shown by default ({len(usd)})")
             expect(page.evaluate(ROW_TEXT_OVERFLOW_JS) == 0, f"graph {theme} {label}: no clipped text in the ranked rows")
-            expect(page.locator("#gr-metrics .kpi").count() == 6, f"graph {theme} {label}: six flow metrics shown")
+            expect(page.locator("#gr-metrics .kpi").count() == 4, f"graph {theme} {label}: four flow metrics shown")
             expect(page.locator("#gr-panel").is_visible() and len(page.locator("#gr-panel-address").inner_text()) >= 40, f"graph {theme} {label}: side panel shows the full address")
             page.screenshot(path=str(shots / f"graph1_{theme}_{label}.png"), full_page=True)
             if page.locator("#gr-in-more").count():

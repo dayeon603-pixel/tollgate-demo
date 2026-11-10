@@ -2,7 +2,7 @@
 import { card, clear, copyButton, dataTable, empty, h, icon, kv, money, segmented, shortAddr, stamp } from './dom.js';
 import { addressProfile, buildGraph, busiestAddress, collectPayments, GRAPH_HOPS, GRAPH_MAX_NODES, suggestedAddresses } from './graph.js';
 
-const SUGGESTIONS = 14;
+const SUGGESTIONS = 6;
 const ALERT_LINKS = 3;
 const st = { address: '', hops: 1, selected: '', expanded: {} };
 export const GRAPH_CAPTION = 'Demo payments. Exact list matches only, no risk scoring.';
@@ -47,12 +47,16 @@ export function renderGraph(ctx, root) {
   hops.id = 'gr-hops';
   hops.classList.add('seg--flat');
 
+  const topInflows = graph.nodes.filter((n) => n.hop === 1).map((n) => n.sentUsd).sort((x, y) => y - x);
+  const topIn = topInflows.reduce((t, v) => t + v, 0);
+  const topNote = topInflows.length > 5 && topIn > 0 ? ` · top 5 = ${((100 * topInflows.slice(0, 5).reduce((t, v) => t + v, 0)) / topIn).toFixed(0)}%` : '';
+
   // Ranked counterparties: who paid this address and who it paid, largest first --------------------
   const LIST_TOP = 10;
   const panel = h('aside', { class: 'graphside', id: 'gr-panel', 'aria-label': 'Selected address' });
   const directNodes = graph.nodes.filter((n) => n.hop !== 2);
   const sideRows = (key) => directNodes.filter((n) => n[key] > 0).map((n) => ({ ...n, usd: n[key] })).sort((a, b) => b.usd - a.usd || a.address.localeCompare(b.address));
-  const ranked = (title, key, id) => {
+  const ranked = (title, key, id, note = '') => {
     const rows = sideRows(key);
     const total = rows.reduce((t, r) => t + r.usd, 0);
     const max = rows[0]?.usd || 1;
@@ -72,11 +76,11 @@ export function renderGraph(ctx, root) {
       ? h('button', { type: 'button', class: 'linkbtn rank__more', id: `${id}-more`, on: { click: () => { st.expanded = { ...st.expanded, [id]: !open }; ctx.refresh(); } } }, open ? `Show top ${LIST_TOP}` : `Show all ${rows.length}`)
       : null;
     return h('section', { class: `rankcard rankcard--${key === 'sentUsd' ? 'in' : 'out'}`, id, 'aria-label': title },
-      h('header', { class: 'rankcard__head' }, h('h3', { text: title }), h('span', { class: 'rankcard__sum', text: `${money(total)} · ${rows.length} address${rows.length === 1 ? '' : 'es'}` })),
+      h('header', { class: 'rankcard__head' }, h('h3', { text: title }), h('span', { class: 'rankcard__sum', text: `${money(total)} ${key === 'sentUsd' ? 'from' : 'to'} ${rows.length} address${rows.length === 1 ? '' : 'es'}${note}` })),
       rows.length ? list : h('p', { class: 'field__hint', text: 'None in the demo payments.' }), toggle);
   };
   const lists = h('div', { class: 'ranks', id: 'gr-chart', 'data-nodes': String(directNodes.length), 'data-centre-listed': String(Boolean(graph.center.listed)) },
-    ranked('Money in, by sender', 'sentUsd', 'gr-in'),
+    ranked('Money in, by sender', 'sentUsd', 'gr-in', topNote),
     ranked('Money out, by receiver', 'receivedUsd', 'gr-out'));
   // Bar widths are set from data attributes so the page needs no inline style attribute (CSP).
   const sizeBars = () => lists.querySelectorAll('.rank__fill').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
@@ -102,11 +106,10 @@ export function renderGraph(ctx, root) {
       kv([
         ['Payments in', `${profile.paymentsIn} (${money(profile.inUsd)})`],
         ['Payments out', `${profile.paymentsOut} (${money(profile.outUsd)})`],
-        ['Total value', money(profile.totalUsd)],
         ['First seen', profile.first === null ? 'none' : stamp(new Date(profile.first).toISOString())],
         ['Last seen', profile.last === null ? 'none' : stamp(new Date(profile.last).toISOString())],
         ['Counterparties', String(profile.counterparties)],
-        ['Source', `${profile.screened} screened, ${profile.streamed} stream, ${profile.background} synthetic background`],
+        ['Data', `Demo payments (${profile.screened} screened)`],
       ]),
       h('div', { class: 'graphside__actions' },
         isCentre ? null : h('button', { type: 'button', class: 'btn btn--primary', id: 'gr-centre', on: { click: () => pivot(address) } }, 'Centre graph here'),
@@ -125,10 +128,10 @@ export function renderGraph(ctx, root) {
     cols: [
       { label: 'Counterparty', render: (n) => h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => pivot(n.address) } }, shortAddr(n.address)) },
       ...(st.hops === 2 ? [{ label: 'Hop', num: true, render: (n) => String(n.hop) }, { label: 'Linked via', render: (n) => (n.hop === 2 ? h('span', { class: 'mono', text: shortAddr(n.parent) }) : 'Centre') }] : []),
-      { label: 'On list', render: (n) => (n.listed ? 'Yes, exact match' : 'No') },
+      { label: 'On list', render: (n) => (n.listed ? h('span', { class: 'chip chip--bad', text: 'On list' }) : h('span', { class: 'muted', text: 'No' })) },
       { label: 'Payments', num: true, render: (n) => String(n.count) },
-      { label: 'Paid to linked address', num: true, render: (n) => money(n.sentUsd) },
-      { label: 'Received from it', num: true, render: (n) => money(n.receivedUsd) },
+      { label: st.hops === 2 ? 'Sent to linked address' : 'Sent to centre', num: true, render: (n) => (n.sentUsd ? money(n.sentUsd) : '—') },
+      { label: st.hops === 2 ? 'Received from it' : 'Received from centre', num: true, render: (n) => (n.receivedUsd ? money(n.receivedUsd) : '—') },
     ],
   }) : null;
 
@@ -139,26 +142,22 @@ export function renderGraph(ctx, root) {
   // Flow metrics for the centre address, direct (one-hop) payments only.
   const cp = addressProfile(payments, st.address, ws.inForce);
   const direct = graph.nodes.filter((n) => n.hop === 1);
-  const inflows = direct.map((n) => n.sentUsd).sort((x, y) => y - x);
-  const top5 = inflows.slice(0, 5).reduce((t, v) => t + v, 0);
   const listedUsd = direct.filter((n) => n.listed).reduce((t, n) => t + n.sentUsd + n.receivedUsd, 0);
   const share = (v, of) => (of > 0 ? `${((100 * v) / of).toFixed(1)}%` : '0%');
   const metric = (label, value, sub) => h('div', { class: 'kpi' }, h('dt', {}, label), h('dd', { text: value }), h('p', { class: 'kpi__sub', text: sub }));
   const metrics = graph.nodes.length ? h('dl', { class: 'kpis kpis--flow', id: 'gr-metrics' },
     metric('Money in', money(cp.inUsd), `${cp.paymentsIn} payments`),
-    metric('Money out', money(cp.outUsd), `${cp.paymentsOut} payments`),
-    metric('Net flow', `${cp.inUsd - cp.outUsd >= 0 ? '+' : '−'}${money(Math.abs(cp.inUsd - cp.outUsd))}`, cp.inUsd >= cp.outUsd ? 'More in than out' : 'More out than in'),
-    metric('Counterparties', String(cp.counterparties), `${direct.filter((n) => n.listed).length} on the list in force`),
-    metric('Top 5 senders', share(top5, cp.inUsd), 'of money in'),
-    metric('Exposure to listed', money(listedUsd), `${share(listedUsd, cp.totalUsd)} of total value`)) : null;
+    metric('Money out', money(cp.outUsd), `${cp.paymentsOut} payments · net ${cp.inUsd - cp.outUsd >= 0 ? '+' : '−'}${money(Math.abs(cp.inUsd - cp.outUsd))}`),
+    metric('Counterparties', String(cp.counterparties), `${direct.filter((n) => n.listed).length} on the sanctions list`),
+    metric('Sent to or from listed', money(listedUsd), `${share(listedUsd, cp.totalUsd)} of all value`)) : null;
 
   root.append(...[
     card('Counterparties', { id: 'gr-card' }, h('div', { class: 'cardbody graphbody' },
       form, err,
-      h('div', { class: 'graphpick' }, h('p', { class: 'field__hint', text: 'Suggested starting points (busiest first, number = direct counterparties)' }), chipScroll),
+      h('div', { class: 'graphpick' }, h('span', { class: 'graphpick__label', text: 'Busiest addresses' }), chipScroll),
       h('div', { class: 'graphhead' },
-        h('span', { class: 'graphhead__label', text: 'Centre' }), h('span', { class: 'mono graphhead__addr', id: 'gr-selected', text: st.address }),
-        graph.center.listed ? h('span', { class: 'chip chip--bad', text: `Exact list match: ${graph.center.entries.map((e) => e.name).join('; ').slice(0, 80)}` }) : h('span', { class: 'chip chip--neutral', text: 'Not on the list in force' }),
+        h('span', { class: 'graphhead__label', text: 'Showing' }), h('span', { class: 'mono graphhead__addr', id: 'gr-selected', text: st.address }),
+        graph.center.listed ? h('span', { class: 'chip chip--bad', text: `On the list: ${graph.center.entries.map((e) => e.name).join('; ').slice(0, 80)}` }) : h('span', { class: 'chip chip--neutral', text: 'Not on the list' }),
         h('span', { class: 'graphhead__hops' }, h('span', { class: 'graphhead__label', text: 'Hops' }), hops)),
       metrics,
       h('p', { class: 'field__hint', id: 'gr-summary', text: `${summary} ${GRAPH_CAPTION}` }),

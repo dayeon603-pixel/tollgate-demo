@@ -5,14 +5,13 @@
  * LIVE_PROOF.md), never rounded again. It is evidence of order, not of legality.
  */
 import { card, clear, h } from './dom.js';
-import { categoryAxis, esc, mount, seriesColour, tooltipBase, valueAxis } from './echart.js';
+import { categoryAxis, esc, mount, seriesColour, tooltipBase } from './echart.js';
 import { sourceRef } from './moat-ui.js';
 import { loadMoatData } from './moat-data.js';
 
-const ROW_H = 34;
 const HEADLINE = { stream: 'USDC (Ethereum)', subset: 'after 2023 12 09' };
 const INTERVAL = /^([\d.]+)% \[([\d.]+)%, ([\d.]+)%\]$/;
-const SHARE_BARS = [['A', 'Provable: listed a calendar day before'], ['B', 'Same day: not provable'], ['C', 'Freeze dated before the listing']];
+const SHARE_BARS = [['A', 'Listing came first (a day or more before)'], ['B', 'Same day: can\'t tell which came first'], ['C', 'Freeze is dated before the listing']];
 
 /** "93.4% [86.7%, 100.0%]" -> { point, lo, hi } as numbers 0 to 100. Raises on any other shape. */
 export function parseInterval(text) {
@@ -21,61 +20,36 @@ export function parseInterval(text) {
   return { point: Number(m[1]), lo: Number(m[2]), hi: Number(m[3]) };
 }
 
-const label = (r) => `${r.stream}, ${r.subset.replace(/(\d{4}) (\d{2}) (\d{2})/, '$1-$2-$3')}`;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const plainDate = (subset) => subset.replace(/(\d{4}) (\d{2}) (\d{2})/, (_, y, m, d) => `${Number(d)} ${MONTHS[Number(m) - 1]} ${y}`);
+const coin = (r) => r.stream.replace(/ \((.+)\)$/, ' on $1');
+const period = (r) => (r.subset === 'all' ? 'All freezes' : `Since ${plainDate(r.subset.replace(/^after /, ''))}`);
+const label = (r) => `${coin(r)}, ${period(r).toLowerCase()}`;
+const isoDay = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+const plainIso = (text) => String(text).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/g, isoDay);
+const range = (text) => { const g = parseInterval(text); return `${g.lo.toFixed(1)}% to ${g.hi.toFixed(1)}%`; };
 
-/** Forest plot: the share as a dot, the 95 percent interval as a line with caps, the report's own text on the right. */
-function forest(rows) {
-  const host = h('div', { class: 'echost' });
-  host.style.height = `${rows.length * ROW_H + 40}px`;
-  const el = h('div', { class: 'blist', role: 'img', id: 'pg-forest-chart', 'aria-label': `Proof gap by stream, with 95 percent intervals: ${rows.map((r) => `${label(r)} ${r.gap}`).join('; ')}.` }, host);
-  const parsed = rows.map((r) => ({ r, gap: parseInterval(r.gap), headline: r.stream === HEADLINE.stream && r.subset === HEADLINE.subset }));
-  mount(host, (t) => {
-    const ink = t.ink;
-    const accent = seriesColour('block');
-    return {
-      grid: { left: 8, right: 8, top: 8, bottom: 4, containLabel: true },
-      tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => { const d = parsed[p.dataIndex]; return `<div class="ect__head">${esc(label(d.r))}</div><div class="ect__row"><span class="ect__k">Proof gap</span><span class="ect__v">${esc(d.r.gap)}</span></div><div class="ect__row"><span class="ect__k">Freezes</span><span class="ect__v">${d.r.n}</span></div><div class="ect__row"><span class="ect__k">Designations</span><span class="ect__v">${d.r.designations}</span></div>`; } },
-      xAxis: valueAxis(t, (v) => `${v}%`, { min: 0, max: 100, interval: 25 }),
-      yAxis: [
-        categoryAxis(t, parsed.map((d) => label(d.r)), null, { inverse: true, axisLine: { show: false }, axisLabel: { color: ink, fontSize: 12, fontFamily: t.sans } }),
-        categoryAxis(t, parsed.map((d) => d.r.gap), null, { inverse: true, position: 'right', axisLine: { show: false }, axisLabel: { color: t.dim, fontSize: 12, fontFamily: t.sans } }),
-      ],
-      series: [
-        { type: 'custom', silent: true, data: parsed.map((d, i) => [d.gap.lo, d.gap.hi, i]), encode: { x: [0, 1], y: 2 },
-          renderItem: (params, api) => {
-            const lo = api.coord([api.value(0), api.value(2)]);
-            const hi = api.coord([api.value(1), api.value(2)]);
-            const cap = 5;
-            const style = { stroke: t.dim, lineWidth: 1.5 };
-            return { type: 'group', children: [
-              { type: 'line', shape: { x1: lo[0], y1: lo[1], x2: hi[0], y2: hi[1] }, style },
-              { type: 'line', shape: { x1: lo[0], y1: lo[1] - cap, x2: lo[0], y2: lo[1] + cap }, style },
-              { type: 'line', shape: { x1: hi[0], y1: hi[1] - cap, x2: hi[0], y2: hi[1] + cap }, style },
-            ] };
-          } },
-        { type: 'scatter', data: parsed.map((d, i) => ({ value: [d.gap.point, i], symbolSize: d.headline ? 13 : 9, itemStyle: { color: d.headline ? accent : ink, borderColor: t.surface, borderWidth: 1.5 } })), z: 3 },
-      ],
-    };
-  }).render();
-  return el;
-}
-
-/** For each stream, 100 percent of its freezes split into A, B and C. */
+/** For each stream, 100 percent of its freezes split into A, B and C, with the gap (B + C) printed on the right. */
 function shares(rows) {
   const host = h('div', { class: 'echost' });
-  host.style.height = `${rows.length * 32 + 16}px`;
-  const el = h('div', { class: 'blist', role: 'img', id: 'pg-shares-chart', 'aria-label': 'For each stream, the split between freezes whose order public data can prove (A), same-day freezes it cannot (B) and freezes dated before the listing (C). The table below has the numbers.' }, host);
+  host.style.height = `${rows.length * 44}px`;
+  const el = h('div', { class: 'blist', role: 'img', id: 'pg-shares-chart', 'aria-label': `For each coin and period, the share of freezes where public records show the listing came first, the share on the same day, and the share where the freeze is dated first: ${rows.map((r) => `${label(r)}: ${r.A} first, ${r.B} same day, ${r.C} freeze first`).join('; ')}.` }, host);
   const keys = ['seg-a', 'seg-b', 'seg-c'];
   mount(host, (t) => ({
-    grid: { left: 8, right: 16, top: 4, bottom: 4, containLabel: true },
-    tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => `<div class="ect__head">${esc(label(rows[p.dataIndex]))}</div><div class="ect__row"><span class="ect__sw ect__sw--${keys[p.seriesIndex]}"></span><span class="ect__k">${esc(SHARE_BARS[p.seriesIndex][1])}</span><span class="ect__v">${esc(rows[p.dataIndex][SHARE_BARS[p.seriesIndex][0]])}</span></div>` },
+    grid: { left: 8, right: 8, top: 4, bottom: 4, containLabel: true },
+    tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => `<div class="ect__head">${esc(label(rows[p.dataIndex]))}</div><div class="ect__row"><span class="ect__sw ect__sw--${keys[p.seriesIndex]}"></span><span class="ect__k">${esc(SHARE_BARS[p.seriesIndex][1])}</span><span class="ect__v">${esc(rows[p.dataIndex][SHARE_BARS[p.seriesIndex][0]])}</span></div><div class="ect__row"><span class="ect__k">Freezes</span><span class="ect__v">${rows[p.dataIndex].n}</span></div>` },
     xAxis: { type: 'value', max: 100, show: false },
-    yAxis: categoryAxis(t, rows.map(label), null, { inverse: true, axisLine: { show: false }, axisLabel: { color: t.ink, fontSize: 12, fontFamily: t.sans } }),
+    yAxis: [
+      categoryAxis(t, rows.map((r) => `{c|${coin(r)}}\n{p|${period(r)}}`), null, { inverse: true, axisLine: { show: false },
+        axisLabel: { lineHeight: 16, rich: { c: { color: t.ink, fontSize: 13, fontWeight: 600, fontFamily: t.sans, align: 'right' }, p: { color: t.faint, fontSize: 12, fontFamily: t.sans, align: 'right' } } } }),
+      categoryAxis(t, rows.map((r) => `{g|${parseInterval(r.gap).point}%}\n{s|can't tell}`), null, { inverse: true, position: 'right', axisLine: { show: false },
+        axisLabel: { lineHeight: 16, rich: { g: { color: t.ink, fontSize: 14, fontWeight: 700, fontFamily: t.sans }, s: { color: t.faint, fontSize: 11, fontFamily: t.sans } } } }),
+    ],
     series: SHARE_BARS.map(([key], k) => ({
-      type: 'bar', stack: 'all', name: key, barWidth: 18,
+      type: 'bar', stack: 'all', name: key, barWidth: 22,
       data: rows.map((r) => parseInterval(r[key]).point),
-      itemStyle: { color: seriesColour(keys[k]), borderColor: t.surface, borderWidth: 1 },
-      label: { show: true, position: 'inside', color: t.dark ? '#0b1217' : '#fff', fontSize: 11, fontFamily: t.sans, formatter: (p) => (p.value >= 9 ? `${p.value}%` : '') },
+      itemStyle: { color: seriesColour(keys[k]), borderColor: t.surface, borderWidth: 2, borderRadius: 2 },
+      label: { show: true, position: 'inside', color: k === 1 ? (t.dark ? '#0b1217' : '#1c262c') : (t.dark ? '#0b1217' : '#fff'), fontSize: 12, fontWeight: 600, fontFamily: t.sans, formatter: (p) => (p.value >= 9 ? `${p.value}%` : '') },
       emphasis: { disabled: true },
     })),
   })).render();
@@ -100,37 +74,46 @@ export async function renderProofGap(ctx, root) {
   const against = live.k !== undefined ? live.N - live.k : null;
 
   const table = h('div', { class: 'tablewrap' }, h('table', { class: 'grid', id: 'pg-table' },
-    h('caption', { class: 'sr', text: 'Proof gap by stream, as the report prints it' }),
-    h('thead', {}, h('tr', {}, ['Stream', 'Subset', 'n (designations)', 'A: provable', 'B: same day', 'C: before listing', 'Proof gap B + C', 'M: mirror listed first'].map((c) => h('th', { scope: 'col', text: c })))),
-    h('tbody', {}, data.rows.map((r) => h('tr', { class: `grid__row${r === head ? ' grid__row--head' : ''}` },
-      h('td', { 'data-label': 'Stream', text: r.stream }), h('td', { 'data-label': 'Subset', text: r.subset }),
-      h('td', { 'data-label': 'n (designations)', class: 'num', text: `${r.n} (${r.designations})` }),
-      h('td', { 'data-label': 'A', class: 'tnum', text: r.A }), h('td', { 'data-label': 'B', class: 'tnum', text: r.B }), h('td', { 'data-label': 'C', class: 'tnum', text: r.C }),
-      h('td', { 'data-label': 'Proof gap', class: 'tnum' }, h('strong', { text: r.gap })), h('td', { 'data-label': 'M', class: 'tnum', text: r.M }))))));
+    h('caption', { class: 'sr', text: 'Proof gap by coin and period, as the report prints it, with 95 percent intervals' }),
+    h('thead', {}, h('tr', {}, ['Coin', 'Period', 'Freezes (listings)', 'Listing first', 'Same day', 'Freeze first', "Can't tell (gap)"].map((c) => h('th', { scope: 'col', text: c })))),
+    h('tbody', {}, data.rows.map((r) => {
+      const cell = (key, text, strong = false) => { const g = parseInterval(text); const v = h(strong ? 'strong' : 'span', { text: `${g.point}%` }); return h('td', { 'data-label': key, class: 'tnum' }, v, h('span', { class: 'pg-ci', text: `${g.lo}–${g.hi}%` })); };
+      return h('tr', { class: `grid__row${r === head ? ' grid__row--head' : ''}` },
+        h('td', { 'data-label': 'Coin', text: coin(r) }), h('td', { 'data-label': 'Period', text: period(r) }),
+        h('td', { 'data-label': 'Freezes (listings)', class: 'num', text: `${r.n} (${r.designations})` }),
+        cell('Listing first', r.A), cell('Same day', r.B), cell('Freeze first', r.C), cell("Can't tell", r.gap, true));
+    }))));
 
   root.append(
-    h('div', { class: 'proof-label', role: 'note' }, h('strong', { text: 'Measured from public data; evidence of order, not legality.' }), ' Nothing here says a freeze was lawful or unlawful.'),
-    card('The gap, in one number', { id: 'pg-head', sub: '95% interval, cluster bootstrap over designations' },
+    h('div', { class: 'proof-label', role: 'note' }, h('strong', { text: 'Measured from public records.' }), ' It shows the order of events, not whether any freeze was lawful.'),
+    card('The gap', { id: 'pg-head' },
       h('div', { class: 'cardbody' },
         h('div', { class: 'bigstat' },
           h('p', { class: 'bigstat__num', id: 'pg-num', text: head.gap.split(' ')[0] }),
-          h('p', { class: 'bigstat__text' }, `of ${head.n} USDC freezes on Ethereum after 2023-12-09 (${head.designations} designations) have no order that official public data can prove. The interval is ${head.gap.slice(head.gap.indexOf('['))}.`)),
-        h('p', { class: 'field__hint', text: `The official OFAC posting carries a date, a freeze carries a second. When they fall on the same New York date, public data cannot say which came first. Across all of USDC on Ethereum (${eth.n} addresses) the gap is ${eth.gap}; for USDT on Tron (${tron.n} addresses) it is ${tron.gap}.` }),
-        h('p', { class: 'field__hint' }, 'Source: ', sourceRef(data.source.path, data.source.sha256), ' and ', sourceRef(data.source_json.path, data.source_json.sha256), `. Pre-registration: ${data.prereg}.`))),
-    card('Proof gap by stream', { id: 'pg-forest', sub: '95% intervals' }, h('div', { class: 'cardbody lanebox' }, forest(data.rows))),
-    card('What public data can and cannot order', { id: 'pg-shares' },
-      h('div', { class: 'cardbody lanebox' }, shares(data.rows),
-        h('ul', { class: 'legend legend--inline' }, SHARE_BARS.map(([key, text]) => h('li', {}, h('span', { class: `swatch swatch--${key.toLowerCase()}`, 'aria-hidden': 'true' }), `${key}: ${text}`))))),
-    card('The report\'s table', { id: 'pg-tbl', sub: `Copied from ${data.source.path}. Percentages are the report's text.` }, table),
+          h('div', {},
+            h('p', { class: 'bigstat__text pg-lead', text: `of ${head.n} USDC freezes on Ethereum since ${plainDate(HEADLINE.subset.replace(/^after /, ''))} cannot be shown, from public records, to come after the sanctions listing.` }),
+            h('p', { class: 'field__hint', text: `Likely range ${range(head.gap)}. Public records give the listing a date and the freeze a time, so when both fall on the same day nobody can prove which came first.` }))))),
+    card('Can public records show the listing came first?', { id: 'pg-shares', sub: 'Share of freezes, by coin' },
+      h('div', { class: 'cardbody lanebox' },
+        h('ul', { class: 'legend legend--inline pg-legend' }, SHARE_BARS.map(([key, text]) => h('li', {}, h('span', { class: `swatch swatch--${key.toLowerCase()}`, 'aria-hidden': 'true' }), text))),
+        shares(data.rows))),
     card('What a receipt adds', { id: 'pg-adds' }, h('div', { class: 'cardbody' },
-      h('p', { text: `A${data.adds.replace('What a Tollgate receipt adds: a', '').replace(/`/g, '')}` }), h('p', { class: 'field__hint', text: data.not_checked }))),
-    card('Live ordering run', { id: 'pg-live', sub: `Window ${live.t0} to ${live.t1}. Pre-registered in docs/PREREG_LIVE_PROOF.md.` }, h('div', { class: 'cardbody' },
+      h('p', { class: 'pg-lead', text: `A${data.adds.replace('What a Tollgate receipt adds: a', '').replace(/`/g, '').replace(/\s*For past freezes.*$/, '')}` }),
+      h('p', { class: 'field__hint', text: data.not_checked.replace(/column B/g, 'the same-day share') }))),
+    card('Live test: did the listing come first?', { id: 'pg-live', sub: `${isoDay(live.t0)} to ${isoDay(live.t1)}` }, h('div', { class: 'cardbody' },
       h('div', { class: 'bigstat' },
         h('p', { class: 'bigstat__num', id: 'pg-live-num', text: `${live.k} of ${live.N}` }),
-        h('p', { class: 'bigstat__text', text: live.headline })),
+        h('p', { class: 'bigstat__text pg-lead', text: plainIso(live.headline) })),
       h('div', { class: 'ratio', role: 'img', 'aria-label': `${live.k} of ${live.N} freezes of a newly listed address have a provable order` },
-        Array.from({ length: live.N }, (_, i) => h('span', { class: `ratio__dot${i < live.k ? ' ratio__dot--yes' : ''}`, title: i < live.k ? 'Provable order' : 'Not provable' }))),
-      h('p', { class: 'field__hint', text: `${live.k} provable, ${against} not provable. With ${live.N} freezes this is a count, not an estimate, and it comes with no interval. The anchor bound says our receipt of the posting existed by that time; the posting may have been published earlier. The proof is one-sided: listing before freeze. Evidence of ordering only, not a legal determination about any freeze.` }),
-      h('p', { class: 'field__hint' }, 'Source: ', sourceRef(live.source.path, live.source.sha256), '. Counts against us are listed in that file; three freezes (obs:176, obs:178, obs:182) were not provable against posting obs:148.'))),
+        Array.from({ length: live.N }, (_, i) => h('span', { class: `ratio__dot${i < live.k ? ' ratio__dot--yes' : ''}`, title: i < live.k ? 'Listing provably first' : 'Not provable' }))),
+      h('p', { class: 'field__hint', text: `${live.k} provable, ${against} not. With ${live.N} freezes this is a plain count, so it has no range. It shows the order of events only, not whether any freeze was lawful.` }))),
+    h('details', { class: 'card pg-method', id: 'pg-method' },
+      h('summary', { class: 'card__head' }, h('span', { class: 'card__title', text: 'Full numbers, method and sources' })),
+      h('div', { class: 'cardbody' },
+        h('p', { class: 'field__hint', text: `Small grey numbers are 95% intervals (cluster bootstrap over listings). Across all USDC freezes on Ethereum (${eth.n}) the gap is ${eth.gap}; for USDT on Tron (${tron.n}) it is ${tron.gap}. "Freeze first" means the freeze carries an earlier date than the official posting.` }),
+        table,
+        h('p', { class: 'field__hint' }, 'Report: ', sourceRef(data.source.path, data.source.sha256), ' and ', sourceRef(data.source_json.path, data.source_json.sha256), `. Pre-registration: ${data.prereg}.`),
+        h('p', { class: 'field__hint', text: 'Past freezes can only be checked against our copy of the list (column M in the report, via scripts/audit_freeze.py). Live test: the anchor time shows our copy of the posting existed by then; the posting may have been published earlier. Three freezes (obs:176, obs:178, obs:182) were not provable against posting obs:148. Pre-registered in docs/PREREG_LIVE_PROOF.md.' }),
+        h('p', { class: 'field__hint' }, 'Live test data: ', sourceRef(live.source.path, live.source.sha256), '.'))),
   );
 }
