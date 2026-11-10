@@ -75,7 +75,7 @@ export function renderGraph(ctx, root) {
       h('header', { class: 'rankcard__head' }, h('h3', { text: title }), h('span', { class: 'rankcard__sum', text: `${money(total)} · ${rows.length} address${rows.length === 1 ? '' : 'es'}` })),
       rows.length ? list : h('p', { class: 'field__hint', text: 'None in the demo payments.' }), toggle);
   };
-  const lists = h('div', { class: 'ranks', id: 'gr-chart', 'data-nodes': String(directNodes.length) },
+  const lists = h('div', { class: 'ranks', id: 'gr-chart', 'data-nodes': String(directNodes.length), 'data-centre-listed': String(Boolean(graph.center.listed)) },
     ranked('Money in, by sender', 'sentUsd', 'gr-in'),
     ranked('Money out, by receiver', 'receivedUsd', 'gr-out'));
   // Bar widths are set from data attributes so the page needs no inline style attribute (CSP).
