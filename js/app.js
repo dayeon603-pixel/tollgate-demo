@@ -1131,6 +1131,41 @@ function bindNavGroups() {
   });
 }
 
+// Sidebar: « hides it, » brings it back. Wide screens remember the choice; narrow screens
+// treat it as a drawer that closes after a tab is picked.
+const NARROW = window.matchMedia('(max-width: 900px)');
+function sideState() { return document.documentElement.dataset.side ?? ''; }
+function setSide(next) {
+  const root = document.documentElement;
+  if (next) root.dataset.side = next; else delete root.dataset.side;
+  const open = NARROW.matches ? next === 'open' : next !== 'hidden';
+  $('tg-side-show').setAttribute('aria-expanded', String(open));
+  if (!NARROW.matches) {
+    try { if (next === 'hidden') localStorage.setItem('tg.side', 'hidden'); else localStorage.removeItem('tg.side'); } catch { /* storage blocked */ }
+  }
+}
+function bindSidebar() {
+  $('tg-side-hide').addEventListener('click', () => {
+    setSide(NARROW.matches ? '' : 'hidden');
+    $('tg-side-show').focus();
+  });
+  $('tg-side-show').addEventListener('click', () => {
+    setSide(NARROW.matches ? (sideState() === 'open' ? '' : 'open') : '');
+    if (sideState() === 'open') document.querySelector('#tg-side .navlink')?.focus();
+  });
+  $('tg-side-scrim').addEventListener('click', () => setSide(''));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sideState() === 'open') { setSide(''); $('tg-side-show').focus(); } });
+  document.querySelector('#tg-side .side__nav').addEventListener('click', (e) => {
+    if (NARROW.matches && e.target.closest('a.navlink')) setSide('');
+  });
+  NARROW.addEventListener('change', () => {
+    let saved = null;
+    try { saved = localStorage.getItem('tg.side'); } catch { /* storage blocked */ }
+    setSide(NARROW.matches ? '' : (saved === 'hidden' ? 'hidden' : ''));
+  });
+  if (NARROW.matches && sideState() === 'hidden') setSide('');
+}
+
 /** Opens the receipt file editor under Verify receipts. */
 function openRawEditor() {
   $('tg-raw').open = true;
@@ -1147,6 +1182,7 @@ function routeFromHash() {
 
 function bindEvents() {
   bindNavGroups();
+  bindSidebar();
   verifyButton.addEventListener('click', () => void run());
   tamperButton.addEventListener('click', () => {
     const scenario = SCENARIOS.find(({ id }) => id === scenarioSelect.value) ?? SCENARIOS[0];

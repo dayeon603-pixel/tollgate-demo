@@ -67,7 +67,7 @@ body[data-group='workspace'] { --status-h: 0px; }
 .grid th { padding: 5px var(--s3); font-size: 12px; font-weight: 600; position: sticky; top: 0; z-index: 2; }
 .grid td { height: 30px; padding: 3px var(--s3); font-size: 12.5px; }
 .tablewrap--scroll { max-height: 440px; overflow: auto; }
-.wsview .card > .tablewrap { max-height: calc(100vh - 200px); overflow: auto; }
+.wsview .card > .tablewrap { max-height: calc(100vh / var(--z, 1) - 200px); overflow: auto; }
 .grid__row:hover td { background: var(--hover); }
 
 /* KPI tiles */
@@ -220,8 +220,11 @@ body[data-group='workspace'] { --status-h: 0px; }
 :root[data-density='compact'] .grid th { padding-top: 3px; padding-bottom: 3px; }
 :root[data-density='compact'] .work { gap: var(--s2); }
 :root[data-density='compact'] .cardbody { padding: var(--s2); }
-:root[data-fontsize='s'] body { zoom: 0.92; }
-:root[data-fontsize='l'] body { zoom: 1.12; }
+:root { --z: 1; }
+:root[data-fontsize='s'] { --z: 0.92; }
+:root[data-fontsize='l'] { --z: 1.12; }
+/* body zoom also scales vh units, so full-height layout divides them back by --z */
+:root[data-fontsize='s'] body, :root[data-fontsize='l'] body { zoom: var(--z); }
 :root[data-motion='reduce'] *, :root[data-motion='reduce'] *::before, :root[data-motion='reduce'] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 :root[data-contrast='high'] { --line: #6b7780; --line-strong: #4a555c; --faint: #2f3a41; --dim: #1c262c; --ink: #000; }
 :root[data-theme='dark'][data-contrast='high'] { --line: #7d8b94; --line-strong: #a3b0b8; --faint: #d3dbe0; --dim: #e6ecef; --ink: #fff; }

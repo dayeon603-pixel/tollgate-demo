@@ -1,0 +1,35 @@
+/* Sidebar: hide with the « button, bring back with ». Same vertical sidebar on every screen;
+   on phones and tablets in portrait it slides in over the page instead of taking a column. */
+.side { position: sticky; }
+.side__brand { margin-right: 32px; }
+.side__hide { position: absolute; top: 12px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: none; color: var(--side-dim); font-size: 18px; line-height: 1; cursor: pointer; }
+.side__hide:hover { background: var(--side-2); color: var(--side-ink); }
+.top__menu { display: none; flex: none; width: 32px; height: 32px; place-items: center; margin-left: -6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; }
+.top__menu:hover { background: var(--surface-2, var(--line)); }
+.side__scrim { display: none; }
+
+:root[data-side='hidden'] .shell { grid-template-columns: minmax(0, 1fr); }
+:root[data-side='hidden'] .side { display: none; }
+:root[data-side='hidden'] .top__menu { display: grid; }
+
+@media (max-width: 900px) {
+  /* Undo the old horizontal tab strip: keep the desktop sidebar, off canvas */
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { position: fixed; top: 0; bottom: 0; left: 0; z-index: 40; width: min(260px, 82vw); height: calc(100dvh / var(--z, 1)); display: flex; flex-direction: column; grid-template-columns: none; gap: 10px; padding: 12px 10px; overflow-y: auto; transform: translateX(-105%); transition: transform 0.18s ease; box-shadow: 8px 0 24px rgba(0, 0, 0, 0.25); }
+  .side__brand { padding: 2px 6px; }
+  .demo-badge { margin: 0 6px; justify-self: auto; }
+  .side__nav { grid-column: auto; flex-direction: column; margin-top: 8px; overflow: visible; }
+  .navlink { width: 100%; white-space: normal; align-items: flex-start; padding: 9px 8px; }
+  .navlink .icon { display: inline-flex; margin-top: 2px; }
+  .navgroup__inner .navlink .icon { display: none; }
+  .navlink__long { display: inline; }
+  .navlink__short { display: none; }
+  .side__foot { display: block; grid-column: auto; margin-top: auto; padding: 8px 8px 4px; }
+  .side__minor { margin-top: 6px; }
+  .top__menu { display: grid; }
+  :root[data-side='open'] .side { display: flex; transform: none; }
+  :root[data-side='open'] .side__scrim { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(10, 14, 16, 0.4); }
+  :root[data-side='hidden'] .side { display: flex; }
+}
+@media (max-width: 900px) and (prefers-reduced-motion: reduce) { .side { transition: none; } }
+@media (max-width: 720px) { .top__menu + .top__title { width: auto; flex: 1 1 0; min-width: 0; } }

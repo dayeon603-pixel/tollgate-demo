@@ -39,10 +39,4 @@
   .navgroup__body, .navgroup__inner, .navgroup__chev { transition: none; }
 }
 
-/* Narrow screens: the bar scrolls sideways, so every tab is shown flat */
-@media (max-width: 900px) {
-  .navgroup, .navgroup__body, .navgroup__inner { display: contents; }
-  .navgroup__head { display: none; }
-  .navgroup__inner { visibility: visible; opacity: 1; transform: none; }
-  .navgroup__inner .navlink .icon { display: inline-flex; }
-}
+
