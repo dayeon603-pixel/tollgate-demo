@@ -31,12 +31,9 @@ export function renderLists(ctx, root) {
   const now = ws.inForce;
   const pending = ws.pendingVersion;
   const meta = ws.list;
-  root.append(h('p', { class: 'notice' }, h('strong', { text: 'About these versions. ' }),
-    'List v3 is the real OFAC snapshot bundled with this site. List v1 and v2 are demo reconstructions of earlier states, made by holding back some of its entries and adding clearly marked synthetic ones, so there is a history to compare. They are not historical OFAC files.'));
-
-  // Versions table
+    // Versions table
   const hist = (v) => ws.listHistory.find((e) => e.versionId === v.id);
-  root.append(card('List versions', { id: 'ls-versions', sub: 'Exact address match against the version in force' }, dataTable({
+  root.append(card('List versions', { id: 'ls-versions', sub: 'v3 is the bundled OFAC snapshot. v1 and v2 are demo reconstructions.' }, dataTable({
     caption: 'List versions', rows: ws.versions, rowKey: (v) => v.id,
     cols: [
       { label: 'Version', render: (v) => h('strong', { text: v.label }) },
@@ -88,7 +85,7 @@ export function renderLists(ctx, root) {
 
   // Lookback history
   if (ws.lookbacks.length) {
-    root.append(card('Lookback history', { id: 'ls-lookbacks', sub: 'What each update changed for earlier screenings' }, dataTable({
+    root.append(card('Lookback history', { id: 'ls-lookbacks' }, dataTable({
       caption: 'Lookback history', rows: [...ws.lookbacks].reverse(), rowKey: (l) => l.id,
       cols: [
         { label: 'Run', render: (l) => l.id }, { label: `Time (${zoneName()})`, render: (l) => stamp(l.ts) },
@@ -159,7 +156,6 @@ export function renderMonitoring(ctx, root) {
     else ctx.toast(r.result.created.length ? 'Added. It matches the list, so an alert was raised.' : 'Added. Not on the list now; it is re-screened on every update.');
   });
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Demo watchlist. ' }), 'The labels are made up. Entries are screened when added and re-screened automatically each time a list update is applied (Lists view). Matching is exact address only.'),
     card('Add a counterparty', { id: 'wl-add' }, h('div', { class: 'cardbody' }, form)),
     card('Watchlist', { id: 'wl-list', sub: `${ws.watch.length} entries, checked against ${ws.inForce.label}` }, dataTable({
       caption: 'Watchlist', rows: ws.watch, rowKey: (w) => w.address,

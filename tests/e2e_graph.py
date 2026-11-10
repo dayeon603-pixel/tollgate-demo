@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin
 
+import rpc_fixture
 from playwright.sync_api import Browser, Page, sync_playwright
 
 log = logging.getLogger("e2e-graph")
@@ -30,7 +31,7 @@ STRAY_JS = """() => {
   const out = [];
   const clipped = (el) => { for (let p = el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o !== 'visible') return true; } return false; };
   for (const el of root.querySelectorAll('*')) {
-    if (el.closest('svg') && el.tagName !== 'svg') continue;
+    if ((el.closest('svg') && el.tagName !== 'svg') || el.closest('.echost > div')) continue;
     const r = el.getBoundingClientRect();
     if (!r.width && !r.height) continue;
     if ((r.left < -0.5 || r.right > innerWidth + 0.5) && !clipped(el)) out.push(`${el.tagName}.${el.className} ${Math.round(r.left)}..${Math.round(r.right)}`);
@@ -60,12 +61,29 @@ def open_app(browser: Browser, base: str, size: tuple[int, int], prefs: dict | N
     return page
 
 
+NODES_JS = "() => Number(document.getElementById('gr-chart')?.dataset.nodes || 0)"
+READY_JS = "() => { const el = document.getElementById('gr-chart'); return el && window.echarts && echarts.getInstanceByDom(el); }"
+# Page position of the drawn node at index i (0 is the centre), read from the chart itself.
+NODE_AT_JS = """i => { const el = document.getElementById('gr-chart'); el.scrollIntoView({ block: 'center' }); const c = echarts.getInstanceByDom(el);
+  const g = c.getModel().getSeriesByIndex(0).getData().getItemGraphicEl(i); const b = g.getBoundingRect().clone(); b.applyTransform(g.getComputedTransform());
+  const r = el.getBoundingClientRect();
+  return { x: r.left + b.x + b.width / 2, y: r.top + b.y + Math.min(b.height / 2, 8), inside: b.x >= -0.5 && b.y >= -0.5 && b.x + b.width <= r.width + 0.5 && b.y + b.height <= r.height + 0.5 }; }"""
+# Label boxes of the drawn nodes, read from the chart; any two that intersect is a collision.
+LABEL_OVERLAP_JS = """() => { const c = echarts.getInstanceByDom(document.getElementById('gr-chart')); const d = c.getModel().getSeriesByIndex(0).getData(); const boxes = [];
+  for (let i = 0; i < d.count(); i++) { const g = d.getItemGraphicEl(i); const t = g && g.getTextContent(); if (!t || t.ignore || t.invisible || !t.style.text) continue;
+    const b = t.getBoundingRect().clone(); b.applyTransform(t.getComputedTransform()); if (b.width > 1) boxes.push(b); }
+  let n = 0; for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) { const a = boxes[i], b = boxes[j];
+    if (a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1) n++; }
+  return { labels: boxes.length, overlaps: n }; }"""
+
+
 def graph_checks(browser: Browser, base: str, shots: Path) -> None:
     for theme in ("dark", "light"):
         for label, size in WIDTHS.items():
             page = open_app(browser, base, size, {"theme": theme})
             page.goto(urljoin(base, "app.html#graph"))
-            page.wait_for_selector("#gr-svg", timeout=15000)
+            page.wait_for_selector("#gr-chart", timeout=15000)
+            page.wait_for_function(READY_JS)
             page.wait_for_timeout(300)
             stray = page.evaluate(STRAY_JS)
             expect(not stray, f"graph {theme} {label}: nothing outside the viewport ({stray})")
@@ -76,28 +94,48 @@ def graph_checks(browser: Browser, base: str, shots: Path) -> None:
             expect(counts[0] == max(counts), f"graph {theme} {label}: first starting point is the busiest ({counts[:4]})")
             first_title = chips.first.get_attribute("title") or ""
             expect(first_title.startswith(page.locator("#gr-selected").inner_text()), f"graph {theme} {label}: default selection is the busiest address")
-            one = page.locator("#gr-svg .gnode").count()
+            one = page.evaluate(NODES_JS)
+            inside = [page.evaluate(NODE_AT_JS, i)["inside"] for i in range(one)]
+            expect(all(inside), f"graph {theme} {label}: every node is drawn inside the canvas")
+            lab = page.evaluate(LABEL_OVERLAP_JS)
+            expect(lab["labels"] >= one - 1 and lab["overlaps"] == 0, f"graph {theme} {label}: every node labelled, no labels overlap ({lab})")
             expect(one >= MIN_NODES, f"graph {theme} {label}: {one} nodes at 1 hop")
             expect(page.locator("#gr-panel").is_visible() and len(page.locator("#gr-panel-address").inner_text()) >= 40, f"graph {theme} {label}: side panel shows the full address")
             page.screenshot(path=str(shots / f"graph1_{theme}_{label}.png"), full_page=True)
             page.click("#gr-hops button:has-text('2')")
-            page.wait_for_function("n => document.querySelectorAll('#gr-svg .gnode').length > n", arg=one)
-            two = page.locator("#gr-svg .gnode").count()
+            page.wait_for_function("n => Number(document.getElementById('gr-chart')?.dataset.nodes || 0) > n", arg=one)
+            page.wait_for_function(READY_JS)
+            two = page.evaluate(NODES_JS)
             expect(two > one, f"graph {theme} {label}: 2 hops draws more nodes ({one} to {two})")
             expect(not page.evaluate(STRAY_JS), f"graph {theme} {label}: 2 hops stays inside the viewport")
+            lab = page.evaluate(LABEL_OVERLAP_JS)
+            expect(lab["overlaps"] == 0, f"graph {theme} {label}: 2 hops labels do not overlap ({lab})")
             page.wait_for_timeout(200)
             page.screenshot(path=str(shots / f"graph2_{theme}_{label}.png"), full_page=True)
             if label == "1440" and theme == "dark":
-                view = page.locator("#gr-svg")
-                before = view.get_attribute("viewBox")
-                page.click("#gr-zin")
-                expect(view.get_attribute("viewBox") != before, "graph: zoom in changes the view")
-                page.click("#gr-reset")
-                expect(view.get_attribute("viewBox") == before, "graph: reset restores the view")
-                page.locator("#gr-svg .gnode:not(.gnode--centre)").first.focus()
-                expect(page.locator("#gr-tip").is_visible(), "graph: focusing a node shows its tooltip")
+                view = page.locator("#gr-chart")
+                more = page.evaluate("() => echarts.getInstanceByDom(document.getElementById('gr-chart')).getOption().series[0].data.findIndex((d) => d._n && d._n.more)")
+                if more >= 0:
+                    before_nodes = page.evaluate(NODES_JS)
+                    pos = page.evaluate(NODE_AT_JS, more)
+                    page.mouse.click(pos["x"], pos["y"])
+                    page.wait_for_function("n => Number(document.getElementById('gr-chart')?.dataset.nodes || 0) > n", arg=before_nodes)
+                    expect(page.locator("#gr-collapse").is_visible(), "graph: clicking +N more expands the column and offers to collapse it")
+                    page.click("#gr-collapse")
+                    page.wait_for_function(READY_JS)
+                    view = page.locator("#gr-chart")
+                view.focus()
+                page.keyboard.press("ArrowRight")
+                page.keyboard.press("ArrowRight")
+                page.wait_for_timeout(200)
+                expect(page.locator("#gr-canvas .ect").first.is_visible() and len(page.locator("#gr-tip").inner_text()) > 10, "graph: arrow keys move to a node, show its tooltip and announce it")
+                focused = view.get_attribute("data-focus")
                 page.keyboard.press("Enter")
-                expect(page.locator("#gr-svg .gnode.is-selected:not(.gnode--centre)").count() == 1, "graph: Enter on a focused node selects it")
+                expect(view.get_attribute("data-selected") == focused and page.locator("#gr-panel-address").inner_text() == focused, "graph: Enter on the focused node selects it")
+                pos = page.evaluate(NODE_AT_JS, 3)
+                page.mouse.click(pos["x"], pos["y"])
+                page.wait_for_timeout(150)
+                expect(view.get_attribute("data-selected") != focused, "graph: clicking a node selects it")
                 expect(page.locator("#gr-receipts, #gr-panel [data-alert], #gr-centre").count() >= 1, "graph: panel offers actions for the selected node")
             page.context.close()
 
@@ -192,6 +230,7 @@ def main(base: str, shots: Path) -> int:
     shots.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        rpc_fixture.patch(browser)
         graph_checks(browser, base, shots)
         settings_checks(browser, base, shots)
         browser.close()

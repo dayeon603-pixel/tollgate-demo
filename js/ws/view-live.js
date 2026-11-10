@@ -5,7 +5,7 @@ import { formatClock } from './settings.js';
 import { compact, sparkline, timeChart } from './live-chart.js';
 import { gateLabel, gateText } from './gate.js';
 import { chip, guardedButton, roleReason } from './moat-ui.js';
-import { BASE_RATE, CHAIN_LABEL, GATE_PROBE_EVERY, LIVE_MAX_RECEIPTS, SPEEDS } from './stream.js';
+import { CHAIN_LABEL, LIVE_MAX_RECEIPTS, SPEEDS } from './stream.js';
 import { HOUR_MS } from './util.js';
 
 const TAPE_ROWS = 60;
@@ -66,13 +66,13 @@ export function renderLive(ctx, root) {
   };
 
   // ---- KPI strip ---------------------------------------------------------------------------
-  const kpiDefs = [['screened', 'Screened (stream)'], ['rate', 'Per second'], ['hold', 'Held by policy'], ['block', 'Hits on the list'], ['value', 'Value screened'], ['latency', 'Latency p50 / p95'], ['gate', 'Gate: released / blocked']];
+  const kpiDefs = [['screened', 'Screened'], ['rate', 'Per second'], ['hold', 'Held by policy'], ['block', 'Hits on the list'], ['value', 'Value screened']];
   const kn = Object.fromEntries(kpiDefs.map(([key]) => [key, { value: h('dd', { text: '0' }), sub: h('p', { class: 'kpi__sub' }), spark: h('div', { class: 'kpi__spark' }) }]));
   const kpis = h('dl', { class: 'kpis kpis--live' }, kpiDefs.map(([key, label]) => h('div', { class: 'kpi' }, h('dt', { text: label }), kn[key].value, kn[key].sub, kn[key].spark)));
 
   // ---- charts ------------------------------------------------------------------------------
-  const throughput = timeChart({ id: 'c-thru', integerAxis: true, title: 'Screenings per second over the last 2 minutes, by decision', mode: 'area', stacked: true, series: [
-    { key: 'allow', label: 'Allow', cls: 'allow' }, { key: 'hold', label: 'Hold', cls: 'hold', dash: true }, { key: 'block', label: 'Hit', cls: 'block' }],
+  const throughput = timeChart({ id: 'c-thru', integerAxis: true, title: 'Screenings per second over the last 2 minutes, by decision', mode: 'bars', stacked: true, series: [
+    { key: 'allow', label: 'Allow', cls: 'allow' }, { key: 'hold', label: 'Hold', cls: 'hold' }, { key: 'block', label: 'Hit', cls: 'block', pattern: true }],
   xFmt: hms, tableLabel: `Time (${zoneName()})` });
   const msFmt = (v) => (v === null || v === undefined ? 'no data' : `${v < 10 ? v.toFixed(1) : Math.round(v)} ms`);
   const latencyChart = timeChart({ id: 'c-lat', title: 'Screening latency p50 and p95 in milliseconds, measured in this browser', mode: 'line', series: [
@@ -82,8 +82,8 @@ export function renderLive(ctx, root) {
   const alertsChart = timeChart({ id: 'c-alerts', integerAxis: true, title: 'Alerts opened per hour over the last 24 hours: workspace alerts and stream flags', mode: 'bars', stacked: true, series: [
     { key: 'workspace', label: 'Workspace alerts', cls: 's-open' }, { key: 'flags', label: 'Stream flags', cls: 'flags' }], xFmt: (t) => `${hm(t)} UTC`, tableLabel: 'Hour (UTC)' });
 
-  const gateChart = timeChart({ id: 'c-gate-live', integerAxis: true, title: 'Gate decisions per second over the last 2 minutes: released and blocked', mode: 'area', stacked: true, series: [
-    { key: 'rel', label: 'Released', cls: 'gpass' }, { key: 'blk', label: 'Blocked', cls: 'gblock', dash: true }], xFmt: hms, tableLabel: `Time (${zoneName()})` });
+  const gateChart = timeChart({ id: 'c-gate-live', integerAxis: true, title: 'Gate decisions per second over the last 2 minutes: released and blocked', mode: 'bars', stacked: true, series: [
+    { key: 'rel', label: 'Released', cls: 'gpass' }, { key: 'blk', label: 'Blocked', cls: 'gblock', pattern: true }], xFmt: hms, tableLabel: `Time (${zoneName()})` });
   const gateList = h('ul', { class: 'plain', id: 'lv-gate-reasons' });
   const gateOut = h('div', { id: 'lv-gate-out', role: 'status', 'aria-live': 'polite' });
   const gateToggle = h('button', { type: 'button', class: 'btn', id: 'lv-gate-toggle', 'aria-pressed': String(tape.gateOn), on: { click: () => { tape.gateOn = !tape.gateOn; gateToggle.setAttribute('aria-pressed', String(tape.gateOn)); gateToggle.textContent = tape.gateOn ? 'Gate on' : 'Gate off'; } } }, tape.gateOn ? 'Gate on' : 'Gate off');
@@ -103,7 +103,7 @@ export function renderLive(ctx, root) {
 
   // ---- tape --------------------------------------------------------------------------------
   const tbody = h('tbody', { id: 'lv-tape' });
-  const empty = h('p', { class: 'tape__empty', id: 'lv-empty', text: 'The stream is off. Press Start stream to screen synthetic payments in this browser.' });
+  const empty = h('p', { class: 'tape__empty', id: 'lv-empty', text: 'The stream is off. Press Start stream.' });
   const head = ['Time (UTC)', 'Chain', 'Asset', 'Amount', 'From', 'To', 'Decision', 'Gate', 'Receipt'];
   const tableEl = h('div', { class: 'tablewrap tablewrap--scroll tape' }, h('table', { class: 'grid grid--tape' },
     h('caption', { class: 'sr', text: 'Latest screened payments, newest first' }),
@@ -113,8 +113,8 @@ export function renderLive(ctx, root) {
     const kind = r.outcome === 'ALLOW' ? '' : ` tape__row--${r.outcome.toLowerCase()}${flash && !live.reducedMotion ? ' tape__row--flash' : ''}`;
     const receipt = h('button', { type: 'button', class: 'linkbtn mono', 'data-rownav': '', on: { click: () => ctx.openLive(r) } }, r.receiptId.replace('rcpt:', ''));
     return h('tr', { class: `grid__row tape__row${kind}`, 'data-outcome': r.outcome },
-      h('td', { 'data-label': 'Time (UTC)', class: 'mono', text: hms(r.t) }), h('td', { 'data-label': 'Chain', text: CHAIN_LABEL[r.chain] }), h('td', { 'data-label': 'Asset', text: r.asset }),
-      h('td', { 'data-label': 'Amount', class: 'num mono', text: money(r.amountUsd) }),
+      h('td', { 'data-label': 'Time (UTC)', class: 'num-l', text: hms(r.t) }), h('td', { 'data-label': 'Chain', text: CHAIN_LABEL[r.chain] }), h('td', { 'data-label': 'Asset', text: r.asset }),
+      h('td', { 'data-label': 'Amount', class: 'num', text: money(r.amountUsd) }),
       h('td', { 'data-label': 'From', class: 'mono', title: r.from, text: shortAddr(r.from) }), h('td', { 'data-label': 'To', class: 'mono', title: r.to, text: shortAddr(r.to) }),
       h('td', { 'data-label': 'Decision' }, outcomeTag(r.outcome)),
       h('td', { 'data-label': 'Gate' }, r.gate ? (r.gate.release ? chip('Released', 'ok') : chip(`Blocked: ${gateLabel(r.gate.reasons[0])}`, 'bad')) : h('span', { class: 'muted', text: 'off' })),
@@ -143,21 +143,16 @@ export function renderLive(ctx, root) {
     const t = tape.totals;
     const sec = tape.series(now, 1, THROUGHPUT_S);
     const recent = sec.slice(-SPARK_S);
-    const lat = tape.latencySummary();
     kn.screened.value.textContent = String(tape.issued);
-    kn.screened.sub.textContent = `window ${tape.epoch} of the rolling ledger`;
+    kn.screened.sub.textContent = 'this session';
     kn.rate.value.textContent = tape.rate(now).toFixed(1);
-    kn.rate.sub.textContent = `target ${BASE_RATE * runner.speed}/s at ${runner.speed}x`;
+    kn.rate.sub.textContent = `at ${runner.speed}x`;
     kn.hold.value.textContent = String(t.hold);
     kn.hold.sub.textContent = tape.issued ? `${((t.hold / tape.issued) * 100).toFixed(1)}% of stream` : 'no data yet';
     kn.block.value.textContent = String(t.block);
     kn.block.sub.textContent = tape.issued ? `${((t.block / tape.issued) * 100).toFixed(1)}% of stream` : 'no data yet';
     kn.value.value.textContent = `$${compact(t.usd)}`;
-    kn.value.sub.textContent = 'synthetic dollars';
-    kn.latency.value.textContent = lat.n ? `${lat.p50 < 10 ? lat.p50.toFixed(1) : Math.round(lat.p50)} / ${lat.p95 < 10 ? lat.p95.toFixed(1) : Math.round(lat.p95)} ms` : 'no data';
-    kn.latency.sub.textContent = 'measured in this browser';
-    kn.gate.value.textContent = `${tape.gateTotals.released} / ${tape.gateTotals.blocked}`;
-    kn.gate.sub.textContent = tape.gateOn ? `1 in ${GATE_PROBE_EVERY} is a no-receipt probe` : 'gate is off';
+    kn.value.sub.textContent = 'USD';
     gateChart.update(sec.map((r) => ({ t: r.t, values: { rel: r.rel, blk: r.blk } })));
     clear(gateList).append(...(Object.entries(tape.gateTotals.byReason).length ? Object.entries(tape.gateTotals.byReason).sort((a, b) => b[1] - a[1]).map(([c, n]) => h('li', {}, h('strong', { text: `${gateLabel(c)}: ` }), `${n}`)) : [h('li', { text: 'Nothing blocked yet.' })]));
     const spark = (key, values, cls) => clear(kn[key].spark).append(sparkline(values, { cls }));
@@ -166,7 +161,6 @@ export function renderLive(ctx, root) {
     spark('hold', recent.map((r) => r.hold), 'hold');
     spark('block', recent.map((r) => r.block), 'block');
     spark('value', recent.map((r) => r.usd), 'value');
-    spark('latency', tape.latencySeries(now, LATENCY_BUCKET_S, 12).map((r) => r.p95 ?? 0), 'p95');
 
     throughput.update(sec.map((r) => ({ t: r.t, values: { allow: r.allow, hold: r.hold, block: r.block } })));
     latencyChart.update(tape.latencySeries(now, LATENCY_BUCKET_S, LATENCY_POINTS).map((r) => ({ t: r.t, values: { p50: r.p50, p95: r.p95 } })));
@@ -181,25 +175,23 @@ export function renderLive(ctx, root) {
       mixRects[i].setAttribute('width', w.toFixed(2));
       x += w;
     });
-    clear(mixLegend).append(...[['allow', 'Allow'], ['hold', 'Hold'], ['block', 'Hit']].map(([k, label]) => h('li', {}, h('span', { class: `mixdot mixdot--${k}`, 'aria-hidden': 'true' }), `${label} `, h('span', { class: 'mono', text: `${t[k]} (${((t[k] / total) * 100).toFixed(1)}%)` }))));
+    clear(mixLegend).append(...[['allow', 'Allow'], ['hold', 'Hold'], ['block', 'Hit']].map(([k, label]) => h('li', {}, h('span', { class: `mixdot mixdot--${k}`, 'aria-hidden': 'true' }), `${label} `, h('span', { class: 'tnum', text: `${t[k]} (${((t[k] / total) * 100).toFixed(1)}%)` }))));
     info.textContent = `Receipts in the live window: ${tape.ledger.size} (rolls at ${LIVE_MAX_RECEIPTS}).`;
   };
 
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Synthetic stream. ' }), `Payments, amounts and addresses here are generated by the demo and never happened. Each one is screened by the same exact-match engine and signed into a real receipt. Stream receipts live in a rolling window of ${LIVE_MAX_RECEIPTS} and are kept apart from the workspace ledger and its evidence packs.`),
     h('div', { class: 'livebar', role: 'group', 'aria-label': 'Stream controls' }, pill, toggle, stop, h('span', { class: 'livebar__label', text: 'Speed' }), speed, verifyBtn, info),
     verifyOut, kpis,
     h('div', { class: 'cols cols--charts' },
       card('Screenings per second', { id: 'lv-c1', sub: 'Last 2 minutes, UTC' }, throughput.el),
-      card('Screening latency', { id: 'lv-c2', sub: 'p50 and p95 per 5 seconds, measured in this browser (match, sign and chain)' }, latencyChart.el),
-      card('Value screened', { id: 'lv-c3', sub: 'Synthetic US dollars per 10 seconds' }, valueChart.el),
-      card('Alerts opened per hour', { id: 'lv-c4', sub: 'Last 24 hours. Stream flags are not cases until you send one to the queue.' }, alertsChart.el)),
-    card('Payment gate', { id: 'lv-gate', sub: 'Each stream transfer is released only with a valid, current receipt that cleared it. Every decision is signed into the stream ledger.', actions: gateToggle },
+      card('Screening latency', { id: 'lv-c2', sub: 'p50 and p95 in ms, per 5 seconds' }, latencyChart.el),
+      card('Value screened', { id: 'lv-c3', sub: 'USD per 10 seconds' }, valueChart.el),
+      card('Alerts opened per hour', { id: 'lv-c4', sub: 'Last 24 hours, UTC' }, alertsChart.el)),
+    card('Payment gate', { id: 'lv-gate', actions: gateToggle },
       h('div', { class: 'cardbody' }, h('div', { class: 'cols' }, gateChart.el, h('div', {}, h('h3', { class: 'subhead', text: 'Blocked, by reason' }), gateList)),
-        h('div', { class: 'btnrow' }, tryGate('none'), tryGate('stale')), gateOut,
-        h('p', { class: 'field__hint', text: `A stream transfer that is held or hit is blocked because its receipt is not a clear. One in ${GATE_PROBE_EVERY} transfers is a probe the demo sends with no receipt. The two buttons make a real gate decision in your workspace ledger.` }))),
-    card('Decision mix', { id: 'lv-mix', sub: 'Stream, this session' }, h('div', { class: 'cardbody' }, mixSvg, mixLegend)),
-    card('Tape', { id: 'lv-tape-card', sub: 'Newest first. Open a receipt to verify it or send a flagged payment to the alert queue.' }, empty, tableEl));
+        h('div', { class: 'btnrow' }, tryGate('none'), tryGate('stale')), gateOut)),
+    card('Decision mix', { id: 'lv-mix' }, h('div', { class: 'cardbody' }, mixSvg, mixLegend)),
+    card('Tape', { id: 'lv-tape-card' }, empty, tableEl));
 
   for (const r of tape.events.slice(-TAPE_ROWS).reverse()) { tbody.append(rowFor(r, false)); empty.hidden = true; }
   live.view = update;

@@ -146,7 +146,7 @@ export function renderScreening(ctx, root) {
 
   // Recent screenings
   const recent = ws.txs.slice(-12).reverse();
-  root.append(card('Latest screenings', { id: 'sc-recent', sub: 'Synthetic feed and your own' }, dataTable({
+  root.append(card('Latest screenings', { id: 'sc-recent' }, dataTable({
     caption: 'Latest screenings', rows: recent, rowKey: (t) => t.id, onOpen: (t) => ctx.openReceipt(t.receiptId),
     cols: [
       { label: 'Payment', open: true, render: (t) => t.id }, { label: `Time (${zoneName()})`, render: (t) => stamp(t.ts) },

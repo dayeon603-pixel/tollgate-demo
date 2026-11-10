@@ -12,7 +12,7 @@ import { cloneShare, verifyShare } from '../js/ws/network.js';
 import { checkReceipt } from '../js/ws/receipt-check.js';
 import { evaluateGate } from '../js/ws/gate.js';
 import { gateSummary, networkSummary } from '../js/ws/net-metrics.js';
-import { niceMax4, monotonePath } from '../js/ws/chartx.js';
+import { compact, niceMax4 } from '../js/ws/chartx.js';
 import { parseInterval } from '../js/ws/view-proofgap.js';
 import { timelineMarks } from '../js/ws/view-archive.js';
 import { CVD_KINDS, GROUPS, MIN_CONTRAST, MIN_DELTA_E, PALETTE, SURFACE, contrast, minSeparation } from '../js/ws/palette-colors.js';
@@ -215,13 +215,15 @@ test('the stylesheet repeats the validated palette', () => {
   for (const [name, hex] of Object.entries(PALETTE.dark)) assert.ok(dark.includes(`--k-${name}: ${hex};`), `dark ${name}`);
 });
 
-test('axis maximum gives round ticks and the curve never overshoots', () => {
+test('axis maximum gives round ticks and compact axis numbers drop a trailing .0', () => {
   assert.equal(niceMax4(0, true), 4);
   assert.equal(niceMax4(5, true), 8);
   assert.equal(niceMax4(11, true) % 4, 0);
   assert.equal(niceMax4(37), 40);
-  const d = monotonePath([[0, 10], [10, 10], [20, 0], null, [30, 5]]);
-  assert.ok(d.startsWith('M0.0 10.0C') && d.includes('M30.0 5.0'));
-  const ys = [...d.matchAll(/ (-?[\d.]+)(?=[CM]|$)/g)].map((m) => Number(m[1]));
-  assert.ok(ys.every((y) => y >= 0 && y <= 10));
+  assert.equal(compact(0), '0');
+  assert.equal(compact(2000), '2k');
+  assert.equal(compact(2500), '2.5k');
+  assert.equal(compact(300000), '300k');
+  assert.equal(compact(1_000_000), '1M');
+  assert.equal(compact(null), '-');
 });

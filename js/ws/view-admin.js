@@ -34,19 +34,19 @@ export function renderPolicy(ctx, root) {
   clear(root);
   const isAdmin = ws.can(ctx.userId, 'policy');
   const p = ws.policy;
-  root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Demo policy. ' }), isAdmin ? 'You are acting as an admin, so you can change settings.' : `You are acting as ${ws.user(ctx.userId).name} (${ws.user(ctx.userId).role}), so settings are read-only. Switch to the admin user at the top to edit them.`, ' Every change is a signed receipt, and it applies to later screenings only. Earlier decisions are not re-made.'),
+  root.append(...[
+    isAdmin ? null : h('p', { class: 'demo-line', id: 'pol-readonly' }, `Read-only for ${ws.user(ctx.userId).name}. Switch to the admin user to edit.`),
     card('Lists', { id: 'pol-lists' }, h('div', { class: 'cardbody' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, disabled: true, 'aria-describedby': 'pol-lists-hint' }), h('span', { text: 'OFAC SDN digital currency addresses' })),
       h('p', { id: 'pol-lists-hint', class: 'field__hint', text: 'Always on. Tollgate matches exact addresses on this list only. Name matching and other lists are not part of this demo.' }))),
-    card('Auto-hold rules', { id: 'pol-rules', sub: 'Checked in order after the list. A list hit always outranks a hold.' }, h('div', { class: 'cardbody' },
+    card('Auto-hold rules', { id: 'pol-rules' }, h('div', { class: 'cardbody' },
       rowSetting(ctx, { key: 'blank_originator', label: RULE_LABELS.blank_originator, enabledKey: 'rules.blank_originator.enabled', valueKey: 'rules.blank_originator.thresholdUsd', current: p.rules.blank_originator }),
       rowSetting(ctx, { key: 'large_value', label: RULE_LABELS.large_value, enabledKey: 'rules.large_value.enabled', valueKey: 'rules.large_value.thresholdUsd', current: p.rules.large_value }))),
     card('Four-eyes approval', { id: 'pol-4eyes' }, h('div', { class: 'cardbody' },
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, disabled: true }), h('span', { text: 'Clearing a list hit needs a second person (always on)' })),
       h('label', { class: 'check' }, h('input', { id: 'pol-4eyes-hold', type: 'checkbox', checked: p.fourEyes.hold, disabled: !isAdmin, on: { change: (e) => ctx.run({ op: 'policySet', actor: ctx.userId, key: 'fourEyes.hold', value: e.target.checked }) } }), h('span', { text: 'Clearing a policy hold needs a second person' })),
       h('p', { class: 'field__hint', text: 'The second person must be a different user with the approver or admin role. Nobody can approve their own proposal.' }))),
-  );
+  ].filter(Boolean));
 
   // Roles
   const roleRows = Object.keys(PERMISSION_LABELS);
@@ -76,7 +76,7 @@ export function renderPolicy(ctx, root) {
 
   // Change log
   const changes = ws.ledger.entries.filter((e) => ['policy_change', 'role_change'].includes(e.receipt.action.type)).reverse();
-  root.append(card('Change log', { id: 'pol-log', sub: 'Each change is a signed receipt' }, dataTable({
+  root.append(card('Change log', { id: 'pol-log' }, dataTable({
     caption: 'Policy and role changes', rows: changes, rowKey: (e) => e.receipt.receipt_id, onOpen: (e) => ctx.openReceipt(e.receipt.receipt_id),
     empty: empty('No changes yet.'),
     cols: [

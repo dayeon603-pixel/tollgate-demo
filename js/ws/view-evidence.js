@@ -78,8 +78,7 @@ export function renderEvidence(ctx, root) {
   const build = h('button', { type: 'button', class: 'btn btn--primary', id: 'ev-build-btn', disabled: !ws.can(ctx.userId, 'open_pack'), on: { click: doBuild } }, 'Build pack');
 
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Demo evidence. ' }), 'Built from the synthetic ledger in this browser. A real pack would hold your receipts; the structure, hashes and offline checks are the same.'),
-    card('Build an evidence pack', { id: 'ev-build', sub: 'For an audit or an exam' }, h('div', { class: 'cardbody' },
+    card('Build an evidence pack', { id: 'ev-build' }, h('div', { class: 'cardbody' },
       h('fieldset', { class: 'scope' }, h('legend', { text: 'Scope' }), radio('range', 'Date range (UTC)'), radio('case', 'One case'), radio('all', 'Whole ledger')),
       h('div', { class: 'filters' }, field('From', from), field('To', to), field('Case', caseSel)), build, error), preview),
   );

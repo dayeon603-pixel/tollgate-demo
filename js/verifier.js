@@ -17,8 +17,8 @@ const SAFE_INTEGER_BOUND = BigInt('9007199254740991');
 const NUMBER_TOKEN = /-?\d+(\.\d+)?([eE][+-]?\d+)?/;
 const RECEIPT_KEYS = ['action', 'prev_hash', 'receipt_id', 'seq', 'this_hash', 'verdict'];
 const HEADER_KEYS = ['list_snapshot', 'receipts', 'rulebook_version'];
-/** Label forms this page writes: sample ids d1, d2, and the visitor's own u1, u2. */
-const DEMO_RECEIPT_ID = /^rcpt:[du]\d+$/;
+/** Label forms this page writes: sample and stream ids d1, d2, the visitor's own u1, u2, and Live chain receipts c1, c2. */
+const DEMO_RECEIPT_ID = /^rcpt:[cdu]\d+$/;
 const DEMO_RULEBOOK_PREFIXES = ['SDN-MIRROR-', 'SDN-OFAC-'];
 /** A zip archive starts with these bytes, read as text. */
 const ZIP_MAGIC = 'PK\u0003\u0004';

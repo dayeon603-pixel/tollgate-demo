@@ -4,19 +4,15 @@
  * prints them (data/proofgap.json, built from results/proof_gap/REPORT.md and results/live_proof/
  * LIVE_PROOF.md), never rounded again. It is evidence of order, not of legality.
  */
-import { card, clear, h, svg } from './dom.js';
+import { card, clear, h } from './dom.js';
+import { categoryAxis, esc, mount, seriesColour, tooltipBase, valueAxis } from './echart.js';
 import { sourceRef } from './moat-ui.js';
 import { loadMoatData } from './moat-data.js';
-import { getSettings } from './settings.js';
 
-const W = 960;
-const ROW_H = 40;
-const M = { left: 250, right: 190, top: 28, bottom: 30 };
-const PLOT_W = W - M.left - M.right;
+const ROW_H = 34;
 const HEADLINE = { stream: 'USDC (Ethereum)', subset: 'after 2023 12 09' };
 const INTERVAL = /^([\d.]+)% \[([\d.]+)%, ([\d.]+)%\]$/;
 const SHARE_BARS = [['A', 'Provable: listed a calendar day before'], ['B', 'Same day: not provable'], ['C', 'Freeze dated before the listing']];
-const TOOLTIP_CHAR_W = 6.3;
 
 /** "93.4% [86.7%, 100.0%]" -> { point, lo, hi } as numbers 0 to 100. Raises on any other shape. */
 export function parseInterval(text) {
@@ -27,94 +23,63 @@ export function parseInterval(text) {
 
 const label = (r) => `${r.stream}, ${r.subset.replace(/(\d{4}) (\d{2}) (\d{2})/, '$1-$2-$3')}`;
 
-function forest(rows, reduced) {
-  const H = M.top + rows.length * ROW_H + M.bottom;
-  const x = (v) => M.left + (v / 100) * PLOT_W;
-  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'forest', role: 'group', 'aria-roledescription': 'interval chart', 'aria-label': 'Proof gap by stream, with 95 percent intervals. The same numbers are in the table below.' });
-  for (const v of [0, 25, 50, 75, 100]) {
-    root.append(svg('line', { x1: x(v), x2: x(v), y1: M.top - 8, y2: M.top + rows.length * ROW_H, class: 'tchart__gl' }));
-    const t = svg('text', { x: x(v), y: H - 10, class: 'tchart__ax', 'text-anchor': v === 0 ? 'start' : v === 100 ? 'end' : 'middle' });
-    t.textContent = `${v}%`;
-    root.append(t);
-  }
-  const tip = svg('g', { class: 'lane__tip', visibility: 'hidden' });
-  const tipBg = svg('rect', { rx: 4, class: 'tchart__tipbg' });
-  const tipText = svg('text', { class: 'tchart__tiptext' });
-  tip.append(tipBg, tipText);
-  const bars = [];
-  rows.forEach((r, i) => {
-    const y = M.top + i * ROW_H + ROW_H / 2;
-    const gap = parseInterval(r.gap);
-    const headline = r.stream === HEADLINE.stream && r.subset === HEADLINE.subset;
-    const g = svg('g', { class: `forest__row${headline ? ' forest__row--head' : ''}`, tabindex: 0, role: 'img', 'aria-label': `${label(r)}: proof gap ${r.gap}, ${r.n} freezes from ${r.designations} designations.` });
-    const name = svg('text', { x: M.left - 12, y: y + 4, class: 'forest__name', 'text-anchor': 'end' });
-    name.textContent = label(r);
-    const value = svg('text', { x: W - M.right + 14, y: y + 4, class: 'forest__value' });
-    value.textContent = r.gap;
-    const line = svg('line', { x1: x(gap.lo), x2: x(gap.hi), y1: y, y2: y, class: 'forest__ci' });
-    const capL = svg('line', { x1: x(gap.lo), x2: x(gap.lo), y1: y - 6, y2: y + 6, class: 'forest__ci' });
-    const capR = svg('line', { x1: x(gap.hi), x2: x(gap.hi), y1: y - 6, y2: y + 6, class: 'forest__ci' });
-    const dot = svg('circle', { cx: x(gap.point), cy: y, r: headline ? 7 : 5.5, class: 'forest__dot' });
-    g.append(svg('rect', { x: 0, y: y - ROW_H / 2, width: W, height: ROW_H, class: 'forest__hit' }), name, line, capL, capR, dot, value);
-    const show = () => {
-      while (tipText.firstChild) tipText.firstChild.remove();
-      const lines = [label(r), `n = ${r.n} freezes, ${r.designations} designations`, `Proof gap ${r.gap}`];
-      lines.forEach((l, k) => { const s = svg('tspan', { x: 10, y: 17 + k * 14, class: k === 0 ? 'tchart__tiphead' : '' }); s.textContent = l; tipText.append(s); });
-      const w = Math.max(...lines.map((l) => l.length)) * TOOLTIP_CHAR_W + 20;
-      tipBg.setAttribute('width', w); tipBg.setAttribute('height', lines.length * 14 + 10);
-      tip.setAttribute('transform', `translate(${Math.min(W - w - 4, Math.max(M.left, x(gap.point) - w / 2)).toFixed(0)} ${Math.max(0, y - 60).toFixed(0)})`);
-      tip.setAttribute('visibility', 'visible');
+/** Forest plot: the share as a dot, the 95 percent interval as a line with caps, the report's own text on the right. */
+function forest(rows) {
+  const host = h('div', { class: 'echost' });
+  host.style.height = `${rows.length * ROW_H + 40}px`;
+  const el = h('div', { class: 'blist', role: 'img', id: 'pg-forest-chart', 'aria-label': `Proof gap by stream, with 95 percent intervals: ${rows.map((r) => `${label(r)} ${r.gap}`).join('; ')}.` }, host);
+  const parsed = rows.map((r) => ({ r, gap: parseInterval(r.gap), headline: r.stream === HEADLINE.stream && r.subset === HEADLINE.subset }));
+  mount(host, (t) => {
+    const ink = t.ink;
+    const accent = seriesColour('block');
+    return {
+      grid: { left: 8, right: 8, top: 8, bottom: 4, containLabel: true },
+      tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => { const d = parsed[p.dataIndex]; return `<div class="ect__head">${esc(label(d.r))}</div><div class="ect__row"><span class="ect__k">Proof gap</span><span class="ect__v">${esc(d.r.gap)}</span></div><div class="ect__row"><span class="ect__k">Freezes</span><span class="ect__v">${d.r.n}</span></div><div class="ect__row"><span class="ect__k">Designations</span><span class="ect__v">${d.r.designations}</span></div>`; } },
+      xAxis: valueAxis(t, (v) => `${v}%`, { min: 0, max: 100, interval: 25 }),
+      yAxis: [
+        categoryAxis(t, parsed.map((d) => label(d.r)), null, { inverse: true, axisLine: { show: false }, axisLabel: { color: ink, fontSize: 12, fontFamily: t.sans } }),
+        categoryAxis(t, parsed.map((d) => d.r.gap), null, { inverse: true, position: 'right', axisLine: { show: false }, axisLabel: { color: t.dim, fontSize: 12, fontFamily: t.sans } }),
+      ],
+      series: [
+        { type: 'custom', silent: true, data: parsed.map((d, i) => [d.gap.lo, d.gap.hi, i]), encode: { x: [0, 1], y: 2 },
+          renderItem: (params, api) => {
+            const lo = api.coord([api.value(0), api.value(2)]);
+            const hi = api.coord([api.value(1), api.value(2)]);
+            const cap = 5;
+            const style = { stroke: t.dim, lineWidth: 1.5 };
+            return { type: 'group', children: [
+              { type: 'line', shape: { x1: lo[0], y1: lo[1], x2: hi[0], y2: hi[1] }, style },
+              { type: 'line', shape: { x1: lo[0], y1: lo[1] - cap, x2: lo[0], y2: lo[1] + cap }, style },
+              { type: 'line', shape: { x1: hi[0], y1: hi[1] - cap, x2: hi[0], y2: hi[1] + cap }, style },
+            ] };
+          } },
+        { type: 'scatter', data: parsed.map((d, i) => ({ value: [d.gap.point, i], symbolSize: d.headline ? 13 : 9, itemStyle: { color: d.headline ? accent : ink, borderColor: t.surface, borderWidth: 1.5 } })), z: 3 },
+      ],
     };
-    g.addEventListener('pointerenter', show); g.addEventListener('focus', show);
-    g.addEventListener('pointerleave', () => tip.setAttribute('visibility', 'hidden')); g.addEventListener('blur', () => tip.setAttribute('visibility', 'hidden'));
-    bars.push({ line, capL, capR, dot, gap, x, y });
-    root.append(g);
-  });
-  root.append(tip);
-  // Intervals open from the point outward on first draw (skipped for reduced motion).
-  if (!reduced) {
-    const start = performance.now();
-    const DUR = 600;
-    const frame = (now) => {
-      const k = Math.min(1, (now - start) / DUR);
-      const e = 1 - (1 - k) ** 3;
-      for (const b of bars) {
-        const lo = b.gap.point + (b.gap.lo - b.gap.point) * e; const hi = b.gap.point + (b.gap.hi - b.gap.point) * e;
-        b.line.setAttribute('x1', b.x(lo)); b.line.setAttribute('x2', b.x(hi));
-        b.capL.setAttribute('x1', b.x(lo)); b.capL.setAttribute('x2', b.x(lo)); b.capR.setAttribute('x1', b.x(hi)); b.capR.setAttribute('x2', b.x(hi));
-      }
-      if (k < 1) requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-  }
-  return root;
+  }).render();
+  return el;
 }
 
+/** For each stream, 100 percent of its freezes split into A, B and C. */
 function shares(rows) {
-  const sw = 560;
-  const rowH = 34;
-  const left = 250;
-  const H = 12 + rows.length * rowH + 8;
-  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'forest', role: 'img', 'aria-label': 'For each stream, the split between freezes whose order public data can prove (A), same-day freezes it cannot (B) and freezes dated before the listing (C). The table below has the numbers.' });
-  rows.forEach((r, i) => {
-    const y = 8 + i * rowH;
-    const name = svg('text', { x: left - 12, y: y + 17, class: 'forest__name', 'text-anchor': 'end' });
-    name.textContent = label(r);
-    root.append(name);
-    let cursor = left;
-    for (const [key, text] of SHARE_BARS) {
-      const { point } = parseInterval(r[key]);
-      const width = (point / 100) * sw;
-      const rect = svg('rect', { x: cursor, y, width: Math.max(0, width), height: 22, class: `shr shr--${key.toLowerCase()}`, tabindex: 0, role: 'img', 'aria-label': `${label(r)}: ${text} ${r[key]}` });
-      const title = svg('title', {});
-      title.textContent = `${text}: ${r[key]}`;
-      rect.append(title);
-      root.append(rect);
-      if (width > 46) { const t = svg('text', { x: cursor + width / 2, y: y + 15, class: 'seg__text', 'text-anchor': 'middle' }); t.textContent = `${point}%`; root.append(t); }
-      cursor += width;
-    }
-  });
-  return root;
+  const host = h('div', { class: 'echost' });
+  host.style.height = `${rows.length * 32 + 16}px`;
+  const el = h('div', { class: 'blist', role: 'img', id: 'pg-shares-chart', 'aria-label': 'For each stream, the split between freezes whose order public data can prove (A), same-day freezes it cannot (B) and freezes dated before the listing (C). The table below has the numbers.' }, host);
+  const keys = ['seg-a', 'seg-b', 'seg-c'];
+  mount(host, (t) => ({
+    grid: { left: 8, right: 16, top: 4, bottom: 4, containLabel: true },
+    tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => `<div class="ect__head">${esc(label(rows[p.dataIndex]))}</div><div class="ect__row"><span class="ect__sw ect__sw--${keys[p.seriesIndex]}"></span><span class="ect__k">${esc(SHARE_BARS[p.seriesIndex][1])}</span><span class="ect__v">${esc(rows[p.dataIndex][SHARE_BARS[p.seriesIndex][0]])}</span></div>` },
+    xAxis: { type: 'value', max: 100, show: false },
+    yAxis: categoryAxis(t, rows.map(label), null, { inverse: true, axisLine: { show: false }, axisLabel: { color: t.ink, fontSize: 12, fontFamily: t.sans } }),
+    series: SHARE_BARS.map(([key], k) => ({
+      type: 'bar', stack: 'all', name: key, barWidth: 18,
+      data: rows.map((r) => parseInterval(r[key]).point),
+      itemStyle: { color: seriesColour(keys[k]), borderColor: t.surface, borderWidth: 1 },
+      label: { show: true, position: 'inside', color: t.dark ? '#0b1217' : '#fff', fontSize: 11, fontFamily: t.sans, formatter: (p) => (p.value >= 9 ? `${p.value}%` : '') },
+      emphasis: { disabled: true },
+    })),
+  })).render();
+  return el;
 }
 
 export async function renderProofGap(ctx, root) {
@@ -128,7 +93,6 @@ export async function renderProofGap(ctx, root) {
     return;
   }
   clear(root);
-  const reduced = getSettings().reduceMotion || Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
   const live = data.live;
   const head = data.rows.find((r) => r.stream === HEADLINE.stream && r.subset === HEADLINE.subset);
   const eth = data.rows.find((r) => r.stream === HEADLINE.stream && r.subset === 'all');
@@ -140,21 +104,21 @@ export async function renderProofGap(ctx, root) {
     h('thead', {}, h('tr', {}, ['Stream', 'Subset', 'n (designations)', 'A: provable', 'B: same day', 'C: before listing', 'Proof gap B + C', 'M: mirror listed first'].map((c) => h('th', { scope: 'col', text: c })))),
     h('tbody', {}, data.rows.map((r) => h('tr', { class: `grid__row${r === head ? ' grid__row--head' : ''}` },
       h('td', { 'data-label': 'Stream', text: r.stream }), h('td', { 'data-label': 'Subset', text: r.subset }),
-      h('td', { 'data-label': 'n (designations)', class: 'num mono', text: `${r.n} (${r.designations})` }),
-      h('td', { 'data-label': 'A', class: 'mono', text: r.A }), h('td', { 'data-label': 'B', class: 'mono', text: r.B }), h('td', { 'data-label': 'C', class: 'mono', text: r.C }),
-      h('td', { 'data-label': 'Proof gap', class: 'mono' }, h('strong', { text: r.gap })), h('td', { 'data-label': 'M', class: 'mono', text: r.M }))))));
+      h('td', { 'data-label': 'n (designations)', class: 'num', text: `${r.n} (${r.designations})` }),
+      h('td', { 'data-label': 'A', class: 'tnum', text: r.A }), h('td', { 'data-label': 'B', class: 'tnum', text: r.B }), h('td', { 'data-label': 'C', class: 'tnum', text: r.C }),
+      h('td', { 'data-label': 'Proof gap', class: 'tnum' }, h('strong', { text: r.gap })), h('td', { 'data-label': 'M', class: 'tnum', text: r.M }))))));
 
   root.append(
     h('div', { class: 'proof-label', role: 'note' }, h('strong', { text: 'Measured from public data; evidence of order, not legality.' }), ' Nothing here says a freeze was lawful or unlawful.'),
-    card('The gap, in one number', { id: 'pg-head', sub: 'Pre-registered before the data was read. Intervals are 95 percent, cluster bootstrap over designations, B = 10000, seed 20261026.' },
+    card('The gap, in one number', { id: 'pg-head', sub: '95% interval, cluster bootstrap over designations' },
       h('div', { class: 'cardbody' },
         h('div', { class: 'bigstat' },
           h('p', { class: 'bigstat__num', id: 'pg-num', text: head.gap.split(' ')[0] }),
           h('p', { class: 'bigstat__text' }, `of ${head.n} USDC freezes on Ethereum after 2023-12-09 (${head.designations} designations) have no order that official public data can prove. The interval is ${head.gap.slice(head.gap.indexOf('['))}.`)),
         h('p', { class: 'field__hint', text: `The official OFAC posting carries a date, a freeze carries a second. When they fall on the same New York date, public data cannot say which came first. Across all of USDC on Ethereum (${eth.n} addresses) the gap is ${eth.gap}; for USDT on Tron (${tron.n} addresses) it is ${tron.gap}.` }),
         h('p', { class: 'field__hint' }, 'Source: ', sourceRef(data.source.path, data.source.sha256), ' and ', sourceRef(data.source_json.path, data.source_json.sha256), `. Pre-registration: ${data.prereg}.`))),
-    card('Proof gap by stream', { id: 'pg-forest', sub: 'Dot is the share, the line is the 95 percent interval, numbers on the right are the report\'s own text. Hover or focus a row.' }, h('div', { class: 'cardbody lanebox' }, forest(data.rows, reduced))),
-    card('What public data can and cannot order', { id: 'pg-shares', sub: 'Each bar is 100 percent of that stream\'s freezes.' },
+    card('Proof gap by stream', { id: 'pg-forest', sub: '95% intervals' }, h('div', { class: 'cardbody lanebox' }, forest(data.rows))),
+    card('What public data can and cannot order', { id: 'pg-shares' },
       h('div', { class: 'cardbody lanebox' }, shares(data.rows),
         h('ul', { class: 'legend legend--inline' }, SHARE_BARS.map(([key, text]) => h('li', {}, h('span', { class: `swatch swatch--${key.toLowerCase()}`, 'aria-hidden': 'true' }), `${key}: ${text}`))))),
     card('The report\'s table', { id: 'pg-tbl', sub: `Copied from ${data.source.path}. Percentages are the report's text.` }, table),

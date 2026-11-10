@@ -20,7 +20,7 @@ const SAMPLE_URL = 'data/sample_receipts.json';
 const SAMPLE_LIST_DATE = 'Aug 2023';
 const BASE_LABELS = { sample: 'Sample', yours: 'Your receipts', file: 'Opened file' };
 const GENESIS = '0'.repeat(64);
-const ROUTES = { ...WS_ROUTES, start: 'Get started', receipts: 'Verify receipts', raw: 'Raw receipts', about: 'How it runs' };
+const ROUTES = { ...WS_ROUTES, start: 'Get started', receipts: 'Verify receipts', about: 'How it runs' };
 const OVERLAY_PANEL_QUERY = '(max-width: 1199px)';
 const COPIED_MS = 1200;
 const HASH_PREFIX = 12;
@@ -1105,21 +1105,48 @@ function setRoute(route, { focus = false } = {}) {
     if (link.dataset.route === route) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
+  syncNavGroups(route);
   $('tg-title').textContent = ROUTES[route];
   document.body.dataset.route = route;
   document.body.dataset.group = Object.hasOwn(WS_ROUTES, route) ? 'workspace' : 'tools';
-  editLink.hidden = route === 'raw';
   if (Object.hasOwn(WS_ROUTES, route)) workspace?.show(route);
   renderPanel();
   if (focus) $('tg-title').focus();
 }
 
+// Open the category that holds the current tab; the others keep whatever the visitor chose.
+function syncNavGroups(route) {
+  document.querySelectorAll('.navgroup').forEach((group) => {
+    const holds = Boolean(group.querySelector(`[data-route="${route}"]`));
+    group.classList.toggle('is-current', holds);
+    if (holds) group.querySelector('.navgroup__head').setAttribute('aria-expanded', 'true');
+  });
+}
+
+function bindNavGroups() {
+  document.querySelectorAll('.navgroup__head').forEach((head) => {
+    head.addEventListener('click', () => {
+      head.setAttribute('aria-expanded', String(head.getAttribute('aria-expanded') !== 'true'));
+    });
+  });
+}
+
+/** Opens the receipt file editor under Verify receipts. */
+function openRawEditor() {
+  $('tg-raw').open = true;
+  fileBox.focus({ preventScroll: true });
+  $('tg-raw').scrollIntoView({ block: 'start' });
+}
+
 function routeFromHash() {
   const name = location.hash.slice(1);
+  // The old Raw receipts page is now the receipt file editor under Verify receipts.
+  if (name === 'raw') { setTimeout(openRawEditor, 0); return 'receipts'; }
   return Object.hasOwn(ROUTES, name) ? name : null;
 }
 
 function bindEvents() {
+  bindNavGroups();
   verifyButton.addEventListener('click', () => void run());
   tamperButton.addEventListener('click', () => {
     const scenario = SCENARIOS.find(({ id }) => id === scenarioSelect.value) ?? SCENARIOS[0];
@@ -1129,6 +1156,7 @@ function bindEvents() {
     void run();
   });
   restoreButton.addEventListener('click', () => change(state.baseText, null));
+  editLink.addEventListener('click', () => { if (state.route !== 'receipts') location.hash = '#receipts'; setTimeout(openRawEditor, 0); });
   useSampleButton.addEventListener('click', () => setBase(state.sampleText, 'sample', SAMPLE_LIST_DATE));
   fileBox.addEventListener('input', () => {
     state.latestRun++;

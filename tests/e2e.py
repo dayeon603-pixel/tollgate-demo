@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlparse
 
+import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e")
@@ -42,7 +43,7 @@ NO_MAIL_APP = "scheme does not have a registered handler"
 def watch(page: Page, origin: str, errors: list[str], foreign: list[str]) -> None:
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" and NO_MAIL_APP not in m.text else None)
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("request", lambda r: foreign.append(r.url) if not r.url.startswith(origin) and not r.url.startswith(("data:", "blob:", "mailto:")) else None)
+    page.on("request", lambda r: foreign.append(r.url) if not rpc_fixture.allowed(r.url, origin, page.url) else None)
 
 
 def banner(page: Page) -> str:
@@ -57,6 +58,7 @@ def main(base: str, shots: Path) -> int:
     foreign: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        rpc_fixture.patch(browser)
 
         # 1. Every page, desktop and phone: screenshots, no horizontal scroll.
         for size_name, size in (("desktop", DESKTOP), ("phone", PHONE)):
@@ -121,7 +123,9 @@ def main(base: str, shots: Path) -> int:
         page.click("#tg-tamper")
         expect(banner(page) == "fail", "app: tampered amount fails")
         page.click("#tg-restore")
-        page.goto(urljoin(base, "app.html#raw"))
+        page.click("#tg-edit")
+        page.wait_for_selector("#tg-raw[open]", timeout=5000)
+        expect(page.locator("#tg-raw[open]").count() == 1 and page.locator("#tg-file").is_visible(), "app: Edit receipt file opens the editor under Verify receipts")
         page.wait_for_function("() => document.getElementById('tg-file').value.length > 0")
         text = page.input_value("#tg-file")
         sample = json.loads(text)

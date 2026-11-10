@@ -21,7 +21,7 @@ export const CHOICES = {
   dateFormat: ['iso', 'long'],
   numberFormat: ['us', 'eu'],
   currencyDisplay: ['symbol', 'code'],
-  landing: ['dashboard', 'live', 'alerts', 'screening', 'graph', 'explorer'],
+  landing: ['dashboard', 'chain', 'live', 'alerts', 'screening', 'graph', 'explorer'],
   addressDisplay: ['short', 'full'],
   copyFormat: ['plain', 'lowercase', 'quoted'],
 };
@@ -30,10 +30,10 @@ export const DEFAULTS = Object.freeze({
   theme: 'dark', density: 'comfortable', fontSize: 'm', reduceMotion: false, highContrast: false,
   timeZone: 'utc', dateFormat: 'iso', numberFormat: 'us', currencyDisplay: 'symbol',
   landing: 'dashboard', rowsPerPage: 'auto', liveSpeed: 1, liveAutoStart: false, hitFlash: false, hitSound: false,
-  addressDisplay: 'short', copyFormat: 'plain', singleKeyShortcuts: true,
+  addressDisplay: 'short', copyFormat: 'plain', singleKeyShortcuts: true, chainAutoConnect: true,
 });
 
-const BOOLEANS = ['reduceMotion', 'highContrast', 'liveAutoStart', 'hitFlash', 'hitSound', 'singleKeyShortcuts'];
+const BOOLEANS = ['reduceMotion', 'highContrast', 'liveAutoStart', 'hitFlash', 'hitSound', 'singleKeyShortcuts', 'chainAutoConnect'];
 const LOCALES = { us: 'en-US', eu: 'de-DE' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const pad = (n) => String(n).padStart(2, '0');

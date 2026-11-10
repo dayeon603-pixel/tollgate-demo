@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e-ws")
@@ -52,11 +53,12 @@ def main(base: str, shots: Path) -> int:
     app = urljoin(base, "app.html")
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        rpc_fixture.patch(browser)
         ctx = browser.new_context(viewport=DESKTOP, accept_downloads=True)
         page = ctx.new_page()
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.on("request", lambda r: foreign.append(r.url) if not r.url.startswith(origin) and not r.url.startswith(("data:", "blob:")) else None)
+        page.on("request", lambda r: foreign.append(r.url) if not rpc_fixture.allowed(r.url, origin) else None)
 
         # 1. Every view renders with content and no horizontal scroll, light and dark.
         page.goto(app)
@@ -68,7 +70,7 @@ def main(base: str, shots: Path) -> int:
             for route in ROUTES:
                 ready(page, route)
                 expect(page.locator(f"#ws-view-{route}").inner_text().strip() != "", f"{theme} {route}: has content")
-                expect(page.locator("#ws-bar").inner_text().find("Synthetic") >= 0, f"{theme} {route}: demo label visible")
+                expect(page.locator(".demo-badge").is_visible() and "sample data" in page.locator(".demo-badge").inner_text(), f"{theme} {route}: demo label visible")
                 page.screenshot(path=str(shots / f"{route}_{theme}.png"), full_page=True)
                 unnamed = page.evaluate(
                     "() => Array.from(document.querySelectorAll(`#ws-view-${location.hash.slice(1)} input, #ws-view-${location.hash.slice(1)} select, #ws-view-${location.hash.slice(1)} textarea`))"
@@ -147,11 +149,11 @@ def main(base: str, shots: Path) -> int:
 
         # 5. List update with lookback.
         ready(page, "lists")
-        before = page.locator("#ws-nav-alerts").inner_text()
+        before = page.locator("#ws-nav-alerts").text_content()
         page.click("button:has-text('Apply update and re-screen')")
         page.wait_for_selector("#ls-lookbacks")
         expect("LB-003" in page.inner_text("#ls-lookbacks"), "lists: lookback run recorded")
-        expect(int(page.locator("#ws-nav-alerts").inner_text()) > int(before), "lists: new alerts raised by lookback")
+        expect(int(page.locator("#ws-nav-alerts").text_content()) > int(before), "lists: new alerts raised by lookback")
         page.screenshot(path=str(shots / "lists_after_update.png"), full_page=True)
 
         # 6. Evidence pack: build, download both, check it.
@@ -192,7 +194,7 @@ def main(base: str, shots: Path) -> int:
         # 8. Persistence and reset.
         page.reload()
         page.wait_for_selector("#ws-view-explorer .card")
-        expect(int(page.locator("#ws-nav-alerts").inner_text()) > 0, "reload: workspace restored")
+        expect(int(page.locator("#ws-nav-alerts").text_content()) > 0, "reload: workspace restored")
         ready(page, "policy")
         expect("thresholdUsd: 1000 to 2000" in page.inner_text("#pol-log"), "reload: my policy change survived")
         page.click("#ws-reset")

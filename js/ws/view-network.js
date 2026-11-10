@@ -90,10 +90,9 @@ export function renderNetwork(ctx, root) {
   if (!st.address) st.address = defaultAddress(ws);
 
   // ---- intro and numbers -------------------------------------------------------------------
-  const intro = h('section', { class: 'card moat-intro', 'aria-labelledby': 'nw-intro-h' },
-    h('div', { class: 'card__head' }, h('h2', { class: 'card__title', id: 'nw-intro-h', text: 'Why each new member makes every other member better' })),
+  const intro = h('details', { class: 'card moat-intro', id: 'nw-intro' },
+    h('summary', { class: 'card__head' }, h('span', { class: 'card__title', text: 'How shared receipts work' })),
     h('div', { class: 'cardbody' },
-      h('p', { class: 'moat-lead', text: 'When a payment arrives with the sender\'s signed receipt, Tollgate checks the receipt offline. If it is intact, from a key you pinned, made on the list you hold now and recent, you can rely on it and skip a second screening. If anything is off, you screen the payment yourself.' }),
       h('ol', { class: 'steps' },
         h('li', { text: 'A member screens a payment and signs a receipt with its own key. It can share that one receipt with the member receiving the funds.' }),
         h('li', { text: 'You pin the member\'s public key. You can revoke it later; revoking and pinning are both signed receipts.' }),
@@ -143,7 +142,7 @@ export function renderNetwork(ctx, root) {
       ctx.refresh();
     },
   });
-  const form = card('Receive an inbound payment', { id: 'nw-receive-card', sub: 'Choose who sends it and what kind of receipt comes with it. Every check runs in this browser.' },
+  const form = card('Receive an inbound payment', { id: 'nw-receive-card' },
     h('div', { class: 'cardbody' },
       h('div', { class: 'filters nw-form' }, field('Sender', senderSel), field('Receipt', scenarioSel), field('Address to screen', address, st.scenario === 'listed' ? 'Uses an address that is on the list in force.' : undefined), field('Amount in USD', amount)),
       h('div', { class: 'btnrow' }, receive, burst),
@@ -165,12 +164,12 @@ export function renderNetwork(ctx, root) {
   });
   coverage.update(cover.map((c) => ({ t: c.k, values: { share: c.share * 100 } })));
   const charts = h('div', { class: 'cols cols--charts' },
-    card('Inbound payments per day', { id: 'nw-c1', sub: 'Last 30 days, UTC. Demo members and synthetic payments. Drag the strip below the chart to zoom.' }, daily.el),
-    card('More members, more covered', { id: 'nw-c2', sub: 'Share of the 30-day inbound log that accepted receipts covered if only the first k pinned members had been pinned. Computed from the log in this demo.' }, coverage.el));
+    card('Inbound payments per day', { id: 'nw-c1', sub: 'Last 30 days, UTC' }, daily.el),
+    card('More members, more covered', { id: 'nw-c2', sub: 'Share of inbound payments covered, by members pinned' }, coverage.el));
 
   // ---- registry ------------------------------------------------------------------------------
   const trustReason = roleReason(ws, userId, 'network_trust');
-  const registry = card('Counterparty registry', { id: 'nw-registry', sub: 'Public keys of the demo members. Pin a key to rely on its receipts; revoke it to stop.',
+  const registry = card('Counterparty registry', { id: 'nw-registry',
     actions: h('div', { class: 'btnrow' }, guardedButton({ label: 'Register another demo member', id: 'nw-add', reason: trustReason, onClick: () => ctx.addMember() })) },
   dataTable({
     caption: 'Counterparty registry', rows: members, rowKey: (m) => m.keyId,
@@ -206,8 +205,7 @@ export function renderNetwork(ctx, root) {
   const log = [...ws.net.reliances].reverse();
   const page = Math.min(st.logPage, Math.max(0, Math.ceil(log.length / LOG_PAGE) - 1));
   const rows = log.slice(page * LOG_PAGE, (page + 1) * LOG_PAGE);
-  const versionBits = Object.entries(sum.byListVersion).sort().map(([v, n]) => `${v}: ${n}`).join(', ') || 'none yet';
-  const logCard = card('Receipt acceptance log', { id: 'nw-log', sub: `Accepted receipts by the list version they used: ${versionBits}. Refusals by reason: ${Object.entries(sum.refusedByReason).map(([c, n]) => `${reasonLabel(c)} ${n}`).join(', ') || 'none'}.` },
+  const logCard = card('Receipt acceptance log', { id: 'nw-log' },
     dataTable({
       caption: 'Inbound payments and what Tollgate did with their receipts', rows, rowKey: (r) => r.id, onOpen: (r) => ctx.openReceipt(r.receiptId),
       empty: empty('No inbound payments yet.', 'Receive one above.'),
@@ -236,7 +234,7 @@ export function renderNetwork(ctx, root) {
   });
   gateChart.update(gateDays.map((d) => ({ t: d.t, values: { released: d.released, blocked: d.blocked } })));
   const recentGates = [...ws.net.gates].reverse().slice(0, 8);
-  const gateCard = card('Payment gate', { id: 'nw-gate', sub: `A transfer goes through only with a valid receipt that cleared it, made on the list in force, no more than ${FRESHNESS_MS / 3_600_000} hours old. Otherwise it is blocked and the reason is shown.` },
+  const gateCard = card('Payment gate', { id: 'nw-gate', sub: `Valid receipt, list in force, under ${FRESHNESS_MS / 3_600_000} hours old` },
     h('div', { class: 'cardbody' },
       h('div', { class: 'btnrow btnrow--wrap' }, presetButtons),
       gateResultPanel(ctx, st.gate),
@@ -256,8 +254,7 @@ export function renderNetwork(ctx, root) {
       })));
 
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Demo members. ' }), 'Demo Exchange A, B, C and the rest are made-up institutions, and their payments are synthetic. The keys are real Ed25519 keys generated in this browser, every receipt is really signed, and every check below really runs. This is how Tollgate works across members, shown with demo members.'),
-    intro, kpis, form, charts, registry, logCard, gateCard);
+    kpis, form, gateCard, charts, registry, logCard, intro);
   if (params.focus) document.getElementById(params.focus)?.scrollIntoView({ block: 'start' });
 }
 

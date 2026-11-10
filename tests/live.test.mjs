@@ -1,14 +1,12 @@
-// Live stream, counterparty graph, command palette, triage and time/cost logic. Run: node --test tests/
+// Live stream, counterparty graph and bulk triage logic. Run: node --test tests/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createWorkspace } from '../js/ws/session.js';
 import { buildPack, verifyPack } from '../js/ws/evidence.js';
 import { LiveTape, LiveRunner, makeEvent, mixSeed, percentile, SPEEDS } from '../js/ws/stream.js';
-import { addressProfile, buildGraph, busiestAddress, collectPayments, edgeWidth, GRAPH_MAX_NODES, layoutGraph, suggestedAddresses } from '../js/ws/graph.js';
-import { buildCommands, rankCommands } from '../js/ws/palette.js';
-import { applyBulk, caseSummary, cleanTargets, DEFAULT_SLA_HOURS, planBulk, slaLabel, slaState, upsertView } from '../js/ws/triage.js';
-import { estimate, readNumber, ESTIMATE_NOTE } from '../js/ws/timecost.js';
+import { addressProfile, buildGraph, busiestAddress, collectPayments, edgeWidth, flowModel, FLOW_TOP, GRAPH_MAX_NODES, layoutGraph, suggestedAddresses } from '../js/ws/graph.js';
+import { applyBulk, planBulk } from '../js/ws/triage.js';
 import { WorkspaceError } from '../js/ws/engine.js';
 
 const list = JSON.parse(await readFile(new URL('../data/ofac_crypto_addresses.json', import.meta.url), 'utf8'));
@@ -135,33 +133,6 @@ test('graph: direct counterparties only, listed nodes flagged, widths by value',
   assert.deepEqual(buildGraph(payments, listed, ws.inForce), g);
 });
 
-test('palette: ranks prefix over substring, requires every word, handles empty and no match', () => {
-  const items = buildCommands({
-    routes: { dashboard: 'Dashboard', alerts: 'Alerts', live: 'Live' }, alerts: [{ id: 'AL-0007', kind: 'hold', status: 'open', address: '0xabc' }],
-    addresses: [{ address: '0xabc123', note: 'demo' }], actions: [{ id: 'theme', title: 'Switch theme', keywords: 'dark light' }],
-  });
-  assert.equal(rankCommands(items, 'alerts')[0].id, 'view:alerts');
-  assert.equal(rankCommands(items, 'al-0007')[0].id, 'alert:AL-0007');
-  assert.equal(rankCommands(items, '0xabc123')[0].kind, 'address');
-  assert.equal(rankCommands(items, 'dark')[0].id, 'action:theme');
-  assert.equal(rankCommands(items, 'zzzz').length, 0);
-  assert.equal(rankCommands(items, 'go live')[0].id, 'view:live');
-  assert.ok(rankCommands(items, '').every((i) => ['view', 'action'].includes(i.kind)));
-  assert.equal(rankCommands(items, '', 2).length, 2);
-});
-
-test('sla: states and labels follow the target', async () => {
-  const hit = { kind: 'hit', createdAt: '2026-11-06T00:00:00.000Z', status: 'open' };
-  const at = (h) => Date.parse(hit.createdAt) + h * 3_600_000;
-  assert.equal(slaState(hit, at(1)).state, 'ok');
-  assert.equal(slaState(hit, at(3.5)).state, 'due_soon');
-  assert.equal(slaState(hit, at(5)).state, 'overdue');
-  assert.equal(slaLabel(slaState(hit, at(5))), '1h over');
-  assert.equal(slaState({ ...hit, status: 'cleared' }, at(99)).state, 'closed');
-  assert.equal(slaState(hit, at(5), { hit: 10 }).state, 'ok');
-  assert.deepEqual(cleanTargets({ hit: 'abc', hold: 2 }), { ...DEFAULT_SLA_HOURS, hold: 2 });
-});
-
 test('bulk: assign and start review apply; propose clearance still needs a second person', async () => {
   const { ws } = await fresh();
   const run = async (op) => { try { return { ok: true, result: await ws.apply(op) }; } catch (e) { if (e instanceof WorkspaceError) return { ok: false, error: e }; throw e; } };
@@ -210,55 +181,6 @@ test('bulk: roles that lack a permission are blocked per row with the engine rea
   assert.equal(planBulk(ws, 'analyst-a', ['AL-9999'], 'assign').blocked.length, 1);
 });
 
-test('case summary: only facts from the ledger', async () => {
-  const { ws } = await fresh();
-  const hit = ws.alerts.find((a) => a.kind === 'hit');
-  const lines = caseSummary(ws, hit);
-  const text = lines.join('\n');
-  assert.match(text, /List: List v\d/);
-  assert.match(text, /exact address match/);
-  assert.ok(text.includes(hit.entries[0].uid));
-  const hold = ws.alerts.find((a) => a.kind === 'hold');
-  assert.match(caseSummary(ws, hold).join('\n'), /Held by policy/);
-});
-
-test('saved views: validated, replaced by name, capped', () => {
-  let views = upsertView([], { name: ' Mine ', filters: { status: 'work', assignee: 'me' } });
-  assert.equal(views[0].name, 'Mine');
-  assert.equal(views[0].filters.kind, 'all');
-  views = upsertView(views, { name: 'Mine', filters: { status: 'pending' } });
-  assert.equal(views.length, 1);
-  assert.equal(views[0].filters.status, 'pending');
-  assert.equal(upsertView(views, { name: '', filters: {} }).length, 1);
-  assert.equal(upsertView(views, { name: 'x' }).length, 1);
-  for (let i = 0; i < 30; i++) views = upsertView(views, { name: `v${i}`, filters: {} });
-  assert.equal(views.length, 12);
-});
-
-test('estimate: formula from the visitor inputs only', () => {
-  assert.equal(estimate({}).ready, false);
-  assert.equal(estimate({}).missing.length, 5);
-  const e = estimate({ alertsPerMonth: 100, minutesNow: 30, auditsPerYear: 2, hoursNow: 40, hourlyCost: 50 });
-  assert.equal(e.ready, true);
-  assert.equal(e.now.alertHours, 600);
-  assert.equal(e.now.auditHours, 80);
-  assert.equal(e.now.hours, 680);
-  assert.equal(e.now.cost, 34_000);
-  assert.equal(e.with, null);
-  assert.equal(e.difference, null);
-  assert.equal(e.note, ESTIMATE_NOTE);
-  const w = estimate({ analysts: 4, alertsPerMonth: '100', minutesNow: '30', minutesWith: '10', auditsPerYear: '2', hoursNow: '40', hoursWith: '10', hourlyCost: '1,000' });
-  assert.equal(w.with.hours, 200 + 20);
-  assert.equal(w.difference.hours, 680 - 220);
-  assert.equal(w.difference.cost, 460_000);
-  assert.equal(w.now.perAnalystHours, 170);
-  assert.equal(estimate({ alertsPerMonth: 'abc', minutesNow: 1, auditsPerYear: 1, hoursNow: 1, hourlyCost: 1 }).ready, false);
-  assert.equal(estimate({ alertsPerMonth: -5, minutesNow: 1, auditsPerYear: 1, hoursNow: 1, hourlyCost: 1 }).ready, false);
-  assert.equal(readNumber(''), null);
-  assert.equal(readNumber('0'), 0);
-  assert.equal(estimate({ alertsPerMonth: 0, minutesNow: 0, auditsPerYear: 0, hoursNow: 0, hourlyCost: 0 }).now.cost, 0);
-});
-
 test('graph: default is the busiest address, two hops add real edges only, cap and layout hold', async () => {
   const { ws } = await fresh();
   const tape = tapeOf(ws);
@@ -293,4 +215,37 @@ test('graph: listed addresses seen in the history get several counterparties', a
   const listed = [...new Set(ws.txs.map((t) => t.address))].filter((a) => ws.inForce.byAddress.has(a.toLowerCase()));
   assert.ok(listed.length > 0);
   for (const a of listed) assert.ok(addressProfile(payments, a, ws.inForce).counterparties >= 4, a);
+});
+
+test('graph: funds-flow model puts money in on the left and money out on the right, top 8 per column', async () => {
+  const { ws } = await fresh();
+  const payments = collectPayments(ws, tapeOf(ws));
+  const busiest = busiestAddress(payments);
+  for (const hops of [1, 2]) {
+    const g = buildGraph(payments, busiest, ws.inForce, GRAPH_MAX_NODES, hops);
+    const m = flowModel(g);
+    const ids = new Set(m.nodes.map((n) => n.id));
+    for (const l of m.links) assert.ok(ids.has(l.source) && ids.has(l.target), `link ${l.source} > ${l.target} has both ends`);
+    for (const col of ['L1', 'R1', 'L2', 'R2']) {
+      const shown = m.nodes.filter((n) => n.col === col && !n.more);
+      assert.ok(shown.length <= FLOW_TOP, `${col} shows at most ${FLOW_TOP}`);
+      const usd = shown.map((n) => n.usd);
+      const listedFirst = shown.filter((n) => !n.listed);
+      assert.deepEqual(listedFirst.map((n) => n.usd), listedFirst.map((n) => n.usd).sort((a, b) => b - a), `${col} sorted by USD`);
+      void usd;
+    }
+    // Every dollar paid to the centre is on a left link, every dollar it paid is on a right link.
+    const paidIn = g.nodes.filter((n) => n.hop === 1).reduce((s, n) => s + n.sentUsd, 0);
+    const paidOut = g.nodes.filter((n) => n.hop === 1).reduce((s, n) => s + n.receivedUsd, 0);
+    assert.equal(m.links.filter((l) => l.target === 'C').reduce((s, l) => s + l.usd, 0), paidIn);
+    assert.equal(m.links.filter((l) => l.source === 'C').reduce((s, l) => s + l.usd, 0), paidOut);
+    assert.ok(m.links.filter((l) => l.target === 'C').every((l) => l.source.startsWith('L1')), 'only the left column pays the centre');
+    const listed = g.nodes.filter((n) => n.hop === 1 && n.listed && n.sentUsd > 0).length;
+    assert.ok(m.nodes.filter((n) => n.col === 'L1' && n.listed).length >= Math.min(listed, FLOW_TOP), 'listed senders are never folded away');
+    const all = flowModel(g, { expanded: { L1: true, R1: true, L2: true, R2: true } });
+    assert.ok(all.nodes.every((n) => !n.more), 'expanding shows every address');
+  }
+  const g1 = buildGraph(payments, busiest, ws.inForce, GRAPH_MAX_NODES, 1);
+  const folded = flowModel(g1).nodes.find((n) => n.id === 'L1:more');
+  if (g1.nodes.filter((n) => n.sentUsd > 0).length > FLOW_TOP) assert.ok(folded && folded.more.n === g1.nodes.filter((n) => n.sentUsd > 0).length - FLOW_TOP, 'the rest fold into one +N more node');
 });

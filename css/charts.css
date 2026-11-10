@@ -1,0 +1,122 @@
+/* Charts on Apache ECharts (js/ws/echart.js, chartx.js, view-graph.js). One look for all of them. */
+
+.tchartbox { padding: var(--s2) var(--s3) var(--s3); display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.tchart { position: relative; width: 100%; min-width: 0; border-radius: 2px; }
+.tchart:focus-visible, .blist:focus-visible, .echost:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tchart__canvas, .blist__canvas { width: 100%; min-width: 0; }
+.tchart__empty {
+  position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--faint); font-size: 13px; pointer-events: none; text-align: center; padding: 0 var(--s3);
+}
+.tchart__empty[hidden] { display: none; }
+.tchartbox__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.tchartbox__reset { min-height: 24px; padding: 0 var(--s2); font-size: 12px; }
+.blist { padding: var(--s2) var(--s3); }
+
+/* Legend buttons: a small key, the label, a pressed state. */
+.legend--toggle { gap: 4px 6px; }
+.legend__btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 1px 8px;
+  border: 1px solid transparent; border-radius: 3px; background: none; color: var(--dim); font: inherit; font-size: 12px; cursor: pointer;
+}
+.legend__btn:hover { background: var(--hover); border-color: var(--line); }
+.legend__btn[aria-pressed='false'] { opacity: 0.5; }
+.legend__btn[aria-pressed='false'] .legend__key { background: none !important; border: 1px dashed var(--faint); }
+.legend__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.legend__key { display: inline-block; flex: none; }
+.legend__key--box { width: 10px; height: 10px; border-radius: 2px; }
+.legend__key--line { width: 16px; height: 2px; border-radius: 1px; }
+.legend__key--line.ect__sw--dash { background: none !important; border-top: 2px dashed currentColor; height: 0; }
+
+/* Tooltip (ECharts puts the box in place; the content uses these classes). */
+.ect { font-variant-numeric: tabular-nums; line-height: 1.45; min-width: 140px; }
+.ect__head { color: var(--faint); font-size: 11px; margin-bottom: 3px; }
+.ect__row { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.ect__k { flex: 1; color: var(--dim); }
+.ect__v { font-weight: 600; color: var(--ink); padding-left: 12px; }
+.ect__row--total { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 3px; }
+.ect__note { color: var(--faint); font-size: 11px; max-width: 260px; white-space: normal; }
+.ect__bad { color: var(--bad); font-weight: 600; }
+.ect__mono { font-family: var(--mono); font-size: 11.5px; }
+.ect__sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+/* Series colours, from the colour-blind-safe tokens. */
+.ect__sw--allow { background: var(--c-allow); color: var(--c-allow); }
+.ect__sw--hold { background: var(--c-hold); color: var(--c-hold); }
+.ect__sw--block { background: var(--c-block); color: var(--c-block); }
+.ect__sw--p50 { background: var(--c-p50); color: var(--c-p50); }
+.ect__sw--p95 { background: var(--c-p95); color: var(--c-p95); }
+.ect__sw--value { background: var(--c-value); color: var(--c-value); }
+.ect__sw--flags { background: var(--c-flags); color: var(--c-flags); }
+.ect__sw--acc { background: var(--c-acc); color: var(--c-acc); }
+.ect__sw--rej { background: var(--c-rej); color: var(--c-rej); }
+.ect__sw--rescr { background: var(--c-rescr); color: var(--c-rescr); }
+.ect__sw--gpass { background: var(--c-gpass); color: var(--c-gpass); }
+.ect__sw--gblock { background: var(--c-gblock); color: var(--c-gblock); }
+.ect__sw--s-open { background: var(--c-s-open); color: var(--c-s-open); }
+.ect__sw--s-in_review { background: var(--c-s-in_review); color: var(--c-s-in_review); }
+.ect__sw--s-escalated { background: var(--c-s-escalated); color: var(--c-s-escalated); }
+.ect__sw--s-cleared { background: var(--c-s-cleared); color: var(--c-s-cleared); }
+.ect__sw--s-confirmed { background: var(--c-s-confirmed); color: var(--c-s-confirmed); }
+.ect__sw--seg-a { background: var(--c-seg-a); color: var(--c-seg-a); }
+.ect__sw--seg-b { background: var(--c-seg-b); color: var(--c-seg-b); }
+.ect__sw--seg-c { background: var(--c-seg-c); color: var(--c-seg-c); }
+.ect__sw--dash { background: none; border-top: 2px dashed currentColor; height: 0; width: 10px; border-radius: 0; }
+
+/* Counterparty graph. */
+.graphcanvas { position: relative; min-width: 0; }
+.echost { width: 100%; min-width: 0; }
+.graphcanvas .gtools { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.legend__swatch--node { width: 12px; height: 12px; }
+.legend__swatch .gshape { fill: #6b7780; stroke: none; }
+.legend__swatch .gshape--listed { fill: var(--c-block); stroke: none; }
+:root[data-theme='dark'] .legend__swatch .gshape { fill: #7d8a93; }
+.graphcanvas .gmore { z-index: 2; }
+.flowheads { display: flex; justify-content: space-between; padding: 10px 14px 0; font-size: 12.5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.flowkey { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #64748b; }
+:root[data-theme='dark'] .flowkey { background: #7d8a93; }
+.flowkey--bad { background: var(--c-block) !important; }
+.flowkey--link { width: 18px; height: 6px; border-radius: 3px; opacity: 0.45; }
+
+/* Numbers in the regular font with tabular figures; monospace is for addresses, hashes and IDs only. */
+.tnum, .num-l, .grid td, .kpi > dd, .compound__value, .bigstat__num, .feed__time { font-variant-numeric: tabular-nums; }
+.feed__time { font-size: 12px; color: var(--faint); }
+.demo-line { margin: 0 0 var(--s3); color: var(--faint); font-size: 12.5px; }
+.rawfold > summary { cursor: pointer; list-style: none; }
+.rawfold > summary::-webkit-details-marker { display: none; }
+.rawfold > summary::before { content: '▸'; color: var(--faint); margin-right: 6px; }
+.rawfold[open] > summary::before { content: '▾'; }
+.moat-intro > summary { cursor: pointer; }
+
+/* Live chain */
+.chainhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 4px; }
+.chainhead__label { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.chainstate { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chainstate__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.chainstate--live { color: var(--good); border-color: var(--good-line); background: var(--good-bg); }
+.chainstate--live .chainstate__dot { background: var(--good); animation: chainpulse 2s ease-in-out infinite; }
+.chainstate--retrying { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.chainstate--retrying .chainstate__dot { background: var(--warn); border-radius: 2px; }
+.chainstate--error { color: var(--bad); border-color: var(--bad-line); background: var(--bad-bg); }
+.chainstate--error .chainstate__dot { background: var(--bad); border-radius: 0; transform: rotate(45deg); }
+@keyframes chainpulse { 50% { opacity: 0.35; } }
+:root[data-motion='reduce'] .chainstate__dot { animation: none; }
+@media (prefers-reduced-motion: reduce) { .chainstate__dot { animation: none !important; } }
+.extlink { font-size: 12px; white-space: nowrap; }
+.extlink::after { content: ' ↗'; }
+.chainhist { margin-left: 6px; font-size: 11px; }
+.chainnote { margin: 8px 12px 12px; }
+.chainhero .card__head { display: flex; align-items: center; gap: 10px; }
+.chainhero__open { margin-left: auto; font-size: 13px; }
+.chainhero__body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 8px 16px; padding: 4px 12px 8px; align-items: center; }
+.chainhero__stats .chainhead__label { margin: 4px 0 8px; }
+.chainhero__nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0 0 8px; }
+.chainhero__nums dt { font-size: 12px; color: var(--faint); }
+.chainhero__nums dd { margin: 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chainhero .tchartbox { padding: 0; }
+@media (max-width: 760px) { .chainhero__body { grid-template-columns: minmax(0, 1fr); } }
+.navlive { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: #3cc9a0; }
+
+.kpis--flow { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: var(--s2, 8px) 0; }
+.flowkey--in { background: var(--c-allow, #2f6fb3) !important; }
+.legend__note { color: var(--faint); }

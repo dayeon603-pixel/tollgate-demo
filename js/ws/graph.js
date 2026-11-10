@@ -340,3 +340,80 @@ export function suggestedAddresses(payments, version, limit = 8) {
   const head = rows.filter((r) => lower(r.address) === lower(busiest));
   return [...head, ...rows.filter((r) => lower(r.address) !== lower(busiest))].slice(0, limit);
 }
+
+export const FLOW_TOP = 8;
+
+/**
+ * Funds-flow model for the Counterparties view, as in Reactor or TRM: money in on the left, the centre in
+ * the middle, money out on the right, a second column on each side for two hops. An address that both
+ * paid and was paid by the centre appears once on each side, each with its own amount. Each column shows
+ * its biggest FLOW_TOP addresses by USD (addresses on the list are always shown), and folds the rest into
+ * one "+N more" node unless that side is expanded.
+ *
+ * Args: graph from buildGraph; options { top, expanded: { L1, R1, L2, R2 } }.
+ * Returns: { nodes: [{ id, col, depth, usd, count, address, listed, entries, hop, more }], links: [{ source, target, usd, count }] }
+ *   where col is 'L2' | 'L1' | 'C' | 'R1' | 'R2', and more is { n } on a folded node, else null.
+ */
+export function flowModel(graph, { top = FLOW_TOP, expanded = {} } = {}) {
+  const two = graph.hops === 2;
+  const depth = two ? { L2: 0, L1: 1, C: 2, R1: 3, R2: 4 } : { L1: 0, C: 1, R1: 2 };
+  const centre = lower(graph.center.address);
+  const nodes = [{ id: 'C', col: 'C', depth: depth.C, usd: 0, count: graph.paymentCount, address: graph.center.address, listed: graph.center.listed, entries: graph.center.entries, hop: 0, more: null }];
+  const links = [];
+  const pick = (rows, col) => {
+    const sorted = rows.slice().sort((a, b) => b.usd - a.usd || a.address.localeCompare(b.address));
+    if (expanded[col] || sorted.length <= top) return { shown: sorted, rest: [] };
+    const listed = sorted.filter((r) => r.listed).slice(0, top);
+    const keep = new Set(listed.map((r) => r.address));
+    for (const r of sorted) { if (keep.size >= top) break; keep.add(r.address); }
+    return { shown: sorted.filter((r) => keep.has(r.address)), rest: sorted.filter((r) => !keep.has(r.address)) };
+  };
+  const place = (col, rows, linkOf) => {
+    const { shown, rest } = pick(rows, col);
+    for (const r of shown) {
+      nodes.push({ id: `${col}:${lower(r.address)}`, col, depth: depth[col], usd: r.usd, count: r.count, address: r.address, listed: r.listed, entries: r.entries, hop: col.endsWith('2') ? 2 : 1, more: null });
+      for (const l of linkOf(r)) links.push(l);
+    }
+    if (rest.length) {
+      const id = `${col}:more`;
+      nodes.push({ id, col, depth: depth[col], usd: rest.reduce((s, r) => s + r.usd, 0), count: rest.reduce((s, r) => s + r.count, 0), address: null, listed: false, entries: [], hop: col.endsWith('2') ? 2 : 1, more: { n: rest.length } });
+      const merged = new Map();
+      for (const r of rest) for (const l of linkOf(r)) {
+        const key = l.source === `${col}:${lower(r.address)}` ? `${id}>${l.target}` : `${l.source}>${id}`;
+        const m = merged.get(key) ?? { source: l.source === `${col}:${lower(r.address)}` ? id : l.source, target: l.target === `${col}:${lower(r.address)}` ? id : l.target, usd: 0, count: 0 };
+        m.usd += l.usd; m.count += l.count;
+        merged.set(key, m);
+      }
+      links.push(...merged.values());
+    }
+    return new Set(shown.map((r) => lower(r.address)));
+  };
+  const hop1 = graph.nodes.filter((n) => n.hop !== 2);
+  const edgeUsd = (from, to) => graph.edges.find((e) => lower(e.from) === from && lower(e.to) === to);
+  const inRows = hop1.filter((n) => n.sentUsd > 0).map((n) => ({ ...n, usd: n.sentUsd, count: edgeUsd(lower(n.address), centre)?.count ?? n.count }));
+  const outRows = hop1.filter((n) => n.receivedUsd > 0).map((n) => ({ ...n, usd: n.receivedUsd, count: edgeUsd(centre, lower(n.address))?.count ?? n.count }));
+  const left = place('L1', inRows, (r) => [{ source: `L1:${lower(r.address)}`, target: 'C', usd: r.usd, count: r.count }]);
+  const right = place('R1', outRows, (r) => [{ source: 'C', target: `R1:${lower(r.address)}`, usd: r.usd, count: r.count }]);
+  if (two) {
+    const flag = new Map(graph.nodes.map((n) => [lower(n.address), n]));
+    const gather = (match) => {
+      const rows = new Map();
+      for (const e of graph.edges) {
+        const hit = match(e);
+        if (!hit) continue;
+        const n = flag.get(hit.far);
+        if (!n || n.hop !== 2) continue;
+        const row = rows.get(hit.far) ?? { address: n.address, listed: n.listed, entries: n.entries, usd: 0, count: 0, links: [] };
+        row.usd += e.usd; row.count += e.count; row.links.push({ near: hit.near, usd: e.usd, count: e.count });
+        rows.set(hit.far, row);
+      }
+      return Array.from(rows.values());
+    };
+    const lRows = gather((e) => (left.has(lower(e.to)) ? { far: lower(e.from), near: lower(e.to) } : null));
+    const rRows = gather((e) => (right.has(lower(e.from)) ? { far: lower(e.to), near: lower(e.from) } : null));
+    place('L2', lRows, (r) => r.links.map((l) => ({ source: `L2:${lower(r.address)}`, target: `L1:${l.near}`, usd: l.usd, count: l.count })));
+    place('R2', rRows, (r) => r.links.map((l) => ({ source: `R1:${l.near}`, target: `R2:${lower(r.address)}`, usd: l.usd, count: l.count })));
+  }
+  nodes[0].usd = Math.max(links.filter((l) => l.target === 'C').reduce((s, l) => s + l.usd, 0), links.filter((l) => l.source === 'C').reduce((s, l) => s + l.usd, 0));
+  return { nodes, links };
+}

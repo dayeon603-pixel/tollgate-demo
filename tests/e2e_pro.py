@@ -5,9 +5,9 @@ Usage: python3 tests/e2e_pro.py <base-url-ending-in-slash> <screenshot-dir>
 Covers: header Sign in and Join the waitlist links on every page, no signup page, no password field
 anywhere, demo sign in, waitlist form; the live stream (start, speed, pause, 20x for 30 seconds with
 a frame-time sample, rolling window, workspace ledger untouched, reduced motion); the command
-palette; bulk actions and keyboard triage on the alert queue; case summary and one-click evidence;
-the counterparty graph; chains and hours; time and cost (measured table, calculator, before and
-with steps); dark and light at desktop and phone width. Fails on a console error, a request off the
+bulk actions and keyboard triage on the alert queue; one-click evidence; the counterparty graph;
+that the removed features (palette, saved views, status bar, SLA timers, drafted summaries) stay
+removed; dark and light at desktop and phone width. Fails on a console error, a request off the
 site's own origin, horizontal scroll at phone width, or a wrong result.
 """
 from __future__ import annotations
@@ -18,11 +18,12 @@ import sys
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
+import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e-pro")
 PAGES = ["index.html", "contact.html", "report.html", "faq.html", "security.html", "privacy.html", "terms.html", "signin.html", "waitlist.html"]
-ROUTES = ["dashboard", "live", "alerts", "screening", "monitoring", "graph", "flow", "lists", "explorer", "evidence", "value", "policy", "activity", "api"]
+ROUTES = ["dashboard", "live", "alerts", "screening", "monitoring", "graph", "lists", "explorer", "evidence", "policy", "activity", "api"]
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
 STREAM_SOAK_S = 30
@@ -70,11 +71,12 @@ def main(base: str, shots: Path) -> int:
     foreign: list[str] = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        rpc_fixture.patch(browser)
         ctx = browser.new_context(viewport=DESKTOP, permissions=["clipboard-read", "clipboard-write"])
         page = ctx.new_page()
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
-        page.on("request", lambda r: foreign.append(r.url) if not r.url.startswith(origin) and not r.url.startswith("data:") and not r.url.startswith("blob:") and not r.url.startswith("mailto:") else None)
+        page.on("request", lambda r: foreign.append(r.url) if not rpc_fixture.allowed(r.url, origin) else None)
 
         # 1. Site entry pages -------------------------------------------------------------
         for name in PAGES:
@@ -125,10 +127,10 @@ def main(base: str, shots: Path) -> int:
 
         # 2. Live stream ------------------------------------------------------------------
         fresh(page, base)
-        head_before = page.locator("#ws-status .sb__cell:nth-child(2) .sb__val").inner_text()
+        head_before = page.evaluate("() => { const dd = Array.from(document.querySelectorAll('#dash-ledger dt')).find((d) => d.textContent === 'Head hash'); return dd ? dd.nextElementSibling.innerText : ''; }")
+        expect(len(head_before) >= 64, "dashboard: ledger head hash shown")
         route(page, "live")
         expect(page.locator("#lv-pill").inner_text() == "OFF", "live: off by default")
-        expect("OFF" in page.locator(".sb__streamtext").inner_text() and "synthetic" in page.locator(".sb__streamtext").inner_text(), "status bar: stream off and labelled synthetic")
         page.click("#lv-toggle")
         page.wait_for_function("() => document.querySelectorAll('#lv-tape tr').length >= 5", timeout=15000)
         expect(page.locator("#lv-pill").inner_text() == "LIVE", "live: indicator says LIVE")
@@ -166,7 +168,8 @@ def main(base: str, shots: Path) -> int:
         page.keyboard.press("Escape")
         page.click("#lv-stop")
         expect(page.locator("#lv-pill").inner_text() == "OFF", "live: stop")
-        head_after = page.locator("#ws-status .sb__cell:nth-child(2) .sb__val").inner_text()
+        route(page, "dashboard")
+        head_after = page.evaluate("() => { const dd = Array.from(document.querySelectorAll('#dash-ledger dt')).find((d) => d.textContent === 'Head hash'); return dd ? dd.nextElementSibling.innerText : ''; }")
         expect(head_before == head_after, f"live: workspace ledger head unchanged by the stream ({head_before})")
         route(page, "evidence")
         page.check("input[name=ev-type][value=all]")
@@ -188,43 +191,22 @@ def main(base: str, shots: Path) -> int:
         expect(rp.locator("#lv-tape tr[data-outcome=HOLD], #lv-tape tr[data-outcome=BLOCK]").first.evaluate("e => getComputedStyle(e.firstElementChild).boxShadow") != "none", "reduced motion: flagged rows still marked")
         rm.close()
 
-        # 3. Palette ----------------------------------------------------------------------
-        fresh(page, base)
-        page.keyboard.press("Control+k")
-        page.wait_for_selector("#ws-palette[open]")
-        page.keyboard.type("receipt exp")
-        page.keyboard.press("Enter")
-        page.wait_for_selector("#ws-view-explorer .card")
-        expect(page.url.endswith("#explorer"), "palette: jumps to a view")
-        page.keyboard.press("Control+k")
-        page.keyboard.type("AL-0036")
-        page.keyboard.press("Enter")
-        page.wait_for_selector("#ws-drawer[open] .case")
-        expect("AL-0036" in page.locator("#ws-drawer-title").inner_text(), "palette: opens an alert by id")
-        page.keyboard.press("Escape")
-        # An address from the data, not a fixed string: stream addresses depend on the run.
-        route(page, "graph")
-        known = page.locator("#gr-selected").inner_text()
-        route(page, "dashboard")
-        page.keyboard.press("Control+k")
-        page.keyboard.type(known[:14])
-        page.keyboard.press("Enter")
-        page.wait_for_selector("#ws-view-graph #gr-svg")
-        expect(page.url.endswith("#graph"), "palette: an address opens the counterparty graph")
-        page.screenshot(path=str(shots / "palette_graph_desktop.png"))
-
         # 4. Graph ------------------------------------------------------------------------
         route(page, "graph")
-        expect("no risk scoring" in page.locator("#ws-view-graph .notice").inner_text(), "graph: honest caption")
-        expect(page.locator("#gr-svg .gnode:not(.gnode--centre)").count() >= 1, "graph: counterparty nodes drawn")
+        expect("no risk scoring" in page.locator("#gr-summary").inner_text(), "graph: honest caption")
+        page.wait_for_function("() => { const el = document.getElementById('gr-chart'); return el && window.echarts && echarts.getInstanceByDom(el); }")
+        expect(int(page.locator("#gr-chart").get_attribute("data-nodes")) >= 2, "graph: counterparty nodes drawn")
         before = page.locator("#gr-selected").inner_text()
-        page.locator("#gr-svg .gnode:not(.gnode--centre)").first.click()
+        pos = page.evaluate("""() => { const el = document.getElementById('gr-chart'); el.scrollIntoView({ block: 'center' }); const c = echarts.getInstanceByDom(el);
+          const g = c.getModel().getSeriesByIndex(0).getData().getItemGraphicEl(1); const b = g.getBoundingRect().clone(); b.applyTransform(g.getComputedTransform()); const r = el.getBoundingClientRect(); return { x: r.left + b.x + b.width / 2, y: r.top + b.y + Math.min(b.height / 2, 8) }; }""")
+        page.mouse.click(pos["x"], pos["y"])
         page.wait_for_selector("#gr-centre")
         page.click("#gr-centre")
         page.wait_for_function("b => document.getElementById('gr-selected').innerText !== b", arg=before)
         expect(True, "graph: selecting a node and centring on it pivots")
         page.locator(".chipbtn--listed").first.click()
-        expect(page.locator("#gr-svg .gnode--centre.gnode--listed").count() == 1, "graph: listed centre flagged")
+        page.wait_for_function("() => document.getElementById('gr-chart')?.dataset.centreListed === 'true'")
+        expect(page.locator("#gr-chart").get_attribute("data-centre-listed") == "true", "graph: listed centre flagged")
         expect(page.locator("#ws-view-graph").inner_text().lower().count("risk score") == 0 or "no risk scoring" in page.locator("#ws-view-graph").inner_text(), "graph: no risk score claims")
 
         # 5. Alerts: bulk, keyboard, summary, evidence ------------------------------------
@@ -234,7 +216,6 @@ def main(base: str, shots: Path) -> int:
         rows = page.locator("tr.grid__row")
         count0 = rows.count()
         expect(count0 >= 2, f"alerts: unassigned rows ({count0})")
-        expect(page.locator("tr[data-sla=overdue]").count() >= 1, "alerts: overdue rows highlighted")
         page.locator("tr.grid__row .selbox").nth(0).check()
         page.locator("tr.grid__row .selbox").nth(1).check()
         expect(page.locator("#al-bulk-count").inner_text() == "2 selected", "bulk: selection counted")
@@ -262,7 +243,6 @@ def main(base: str, shots: Path) -> int:
         page.locator("tr.grid__row", has=page.locator(".schip", has_text="approval pending")).first.locator("button.rowlink").click()
         page.wait_for_selector("#ws-drawer[open] .pending")
         expect(page.locator("#case-approve_clear").is_disabled(), "four-eyes: proposer cannot approve after a bulk proposal")
-        expect(page.locator(".sla").count() >= 1, "case: SLA shown")
         page.click("#case-evidence")
         page.wait_for_function("() => document.getElementById('ws-view-evidence').innerText.includes('Receipts in scope')", timeout=10000)
         expect(page.locator("#ws-view-evidence").inner_text().count("Receipts in scope") == 1, "case: one click builds the evidence pack for the case")
@@ -274,35 +254,12 @@ def main(base: str, shots: Path) -> int:
         expect(page.locator("#al-bulk-count").inner_text() == "1 selected", "keys: x selects the focused row")
         page.keyboard.press("e")
         page.wait_for_selector("#ws-drawer[open] .case")
-        expect(len(page.input_value("#case-note")) > 20 and "List:" in page.input_value("#case-note"), "keys: e opens the case with the summary drafted")
+        expect(page.locator("#ws-drawer[open] #case-escalate").count() == 1, "keys: e opens the case")
         page.wait_for_timeout(200)
         expect(page.evaluate("document.activeElement.id") in ("case-escalate", "case-note"), "keys: focus lands on the action")
-        page.click("#case-draft")
-        expect("Signed screening receipt" in page.input_value("#case-note") or "List:" in page.input_value("#case-note"), "case: draft summary built from receipt data")
         page.screenshot(path=str(shots / "case_desktop.png"))
         page.keyboard.press("Escape")
-        page.fill("#al-view-name", "Mine open")
-        page.click("#al-view-save")
-        expect(page.locator("#al-views option:text-is('Mine open')").count() == 1, "views: saved view listed")
-        page.reload()
-        page.wait_for_selector("#ws-view-alerts .card")
-        expect(page.locator("#al-views option:text-is('Mine open')").count() == 1, "views: survives reload")
-
-        # 6. Time and cost ----------------------------------------------------------------
-        route(page, "value")
-        page.click("#tc-measure")
-        page.wait_for_selector("#tc-table tbody tr")
-        expect(page.locator("#tc-table tbody tr").count() >= 4, "value: measured rows appear")
-        expect("ms" in page.locator("#tc-table").inner_text(), "value: timings in ms")
-        expect(page.locator("#tc-out").inner_text().startswith("Enter your numbers"), "value: calculator starts blank")
-        for key, val in dict(alertsPerMonth="100", minutesNow="30", auditsPerYear="2", hoursNow="40", hourlyCost="50").items():
-            page.fill(f"#tc-{key}", val)
-        page.wait_for_selector("#tc-estimate")
-        expect("34,000" in page.locator("#tc-estimate").inner_text(), "value: estimate follows the formula (34,000)")
-        expect(page.locator("#tc-note").inner_text() == "Estimate from your inputs. Not a measured result.", "value: honesty line")
-        expect(not re.search(r"\d+\s?%\s+(faster|saved|savings)|hours saved", page.locator("#ws-view-value").inner_text(), re.I), "value: no savings percentage claims")
-        expect(page.locator(".compare__col").count() == 2, "value: before and with columns")
-        page.screenshot(path=str(shots / "value_filled_desktop.png"), full_page=True)
+        expect(page.locator("#al-views, #ws-palette, #ws-status, .sla, #case-draft").count() == 0, "removed: saved views, palette, status bar, SLA timers, drafted summaries")
 
         # 7. Reset demo -------------------------------------------------------------------
         page.click("#ws-reset")
@@ -326,7 +283,7 @@ def main(base: str, shots: Path) -> int:
                     page.wait_for_timeout(250)
                     over = overflow(page)
                     expect(over <= 0, f"{theme} {label} {name}: no horizontal scroll ({over}px)")
-                    if name in ("dashboard", "live", "alerts", "graph", "flow", "value", "explorer"):
+                    if name in ("dashboard", "live", "alerts", "graph", "explorer"):
                         page.screenshot(path=str(shots / f"{name}_{theme}_{label}.png"), full_page=True)
                     if name == "live":
                         page.click("#lv-stop")

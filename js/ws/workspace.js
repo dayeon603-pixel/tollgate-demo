@@ -20,14 +20,9 @@ import { renderEvidence } from './view-evidence.js';
 import { renderApi, renderPolicy } from './view-admin.js';
 import { renderLive } from './view-live.js';
 import { renderGraph } from './view-graph.js';
-import { renderFlow } from './view-flow.js';
-import { renderValue } from './view-value.js';
 import { liveReceiptView } from './view-livereceipt.js';
 import { createLive } from './live.js';
-import { buildStatusBar } from './statusbar.js';
-import { initPalette } from './palette-ui.js';
 import { Measurements } from './timecost.js';
-import { cleanTargets, DEFAULT_SLA_HOURS, normalizeView, upsertView } from './triage.js';
 import { WS_ROUTES } from './workspace-routes.js';
 import { renderSettings } from './view-settings.js';
 import { applySettings, getSettings, loadSettings, setSettings, subscribeSettings } from './settings.js';
@@ -35,14 +30,16 @@ import { hitFlash } from './hits.js';
 import { renderNetwork } from './view-network.js';
 import { renderArchive } from './view-archive.js';
 import { renderProofGap } from './view-proofgap.js';
+import { ChainWatcher } from './chain.js';
+import { chainReceiptView, renderChain } from './view-chain.js';
 import { loadDemoNetwork, NET_KEYS_STORAGE, receiveInbound, registerMember, runGatePreset } from './net-flow.js';
 
 export { WS_ROUTES };
 export const LIST_URL = 'data/ofac_crypto_addresses.json';
 const RENDERERS = {
-  dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph, flow: renderFlow,
-  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, value: renderValue, policy: renderPolicy, activity: renderActivity, api: renderApi, settings: renderSettings,
-  network: renderNetwork, archive: renderArchive, proofgap: renderProofGap,
+  dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph,
+  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, policy: renderPolicy, activity: renderActivity, api: renderApi, settings: renderSettings,
+  network: renderNetwork, archive: renderArchive, proofgap: renderProofGap, chain: renderChain,
 };
 const TOAST_MS = 6000;
 const RESET_CONFIRM_MS = 5000;
@@ -50,18 +47,16 @@ const $ = (id) => document.getElementById(id);
 
 export async function initWorkspace({ openInVerifier }) {
   const roots = Object.fromEntries(Object.keys(WS_ROUTES).map((route) => [route, $(`ws-view-${route}`)]));
-  const prefs = { user: 'analyst-a', views: [], sla: { ...DEFAULT_SLA_HOURS }, ...(readJson(PREFS_KEY) ?? {}) };
-  prefs.views = (Array.isArray(prefs.views) ? prefs.views : []).map(normalizeView).filter(Boolean);
-  prefs.sla = cleanTargets(prefs.sla);
+  const prefs = { user: 'analyst-a', ...(readJson(PREFS_KEY) ?? {}) };
   const measure = new Measurements();
   let live = null;
-  let statusUpdate = () => {};
   let ws = null;
   let anchor = null;
   let route = null;
   let listMeta = null;
   let listJson = null;
   let network = null;
+  let chain = null;
   let ready = false;
   const params = {};
   let drawerStack = [];
@@ -119,13 +114,12 @@ export async function initWorkspace({ openInVerifier }) {
   const ctx = {
     get ws() { return ws; },
     get live() { return live; },
+    /** Real Ethereum mainnet watcher (chain.js), one for the whole workspace. */
+    get chain() { return chain; },
+    autoConnect: () => getSettings().chainAutoConnect,
+    openChainReceipt: (record) => openDrawer({ title: `Chain receipt ${record.receiptId.replace('rcpt:', '')}`, build: () => chainReceiptView(ctx, record) }, { push: dlg.open && drawerStack.length > 0 }),
     measure,
     intent: null,
-    get sla() { return prefs.sla; },
-    setSla(targets) { prefs.sla = cleanTargets(targets); savePrefs(); },
-    get views() { return prefs.views; },
-    saveView(view) { prefs.views = upsertView(prefs.views, view); savePrefs(); },
-    deleteView(name) { prefs.views = prefs.views.filter((v) => v.name !== name); savePrefs(); },
     openLive: (record) => openDrawer({ title: `Stream receipt ${record.receiptId.replace('rcpt:', '')}`, build: () => liveReceiptView(ctx, record) }, { push: dlg.open && drawerStack.length > 0 }),
     get userId() { return prefs.user; },
     get listMeta() { return listMeta; },
@@ -220,7 +214,7 @@ export async function initWorkspace({ openInVerifier }) {
       }
       if (dlg.open) drawCurrent();
     },
-    refreshChrome: () => { drawBar(); statusUpdate(); },
+    refreshChrome: () => { drawBar(); },
     /** The saved op log, as the browser holds it, for the settings export. */
     exportState: () => readJson(STATE_KEY) ?? snapshot(ws, anchor),
     async importState(state, settings) {
@@ -262,10 +256,8 @@ export async function initWorkspace({ openInVerifier }) {
     } }, id: 'ws-reset' }, resetArmed ? 'Confirm: erase my changes' : 'Reset demo');
     const version = ws.inForce;
     clear(bar).append(
-      h('p', { class: 'wsbar__demo' }, h('span', { class: 'demo-badge__dot', 'aria-hidden': 'true' }), h('strong', { text: 'Demo workspace' }), ' Synthetic payments and people. Real list, real receipts.'),
       h('div', { class: 'wsbar__right' },
         h('span', { class: 'wsbar__list', title: `Digest ${version.digest}` }, `List in force: ${version.label}`, ws.pendingVersion ? h('a', { href: '#lists', class: 'wsbar__update', text: 'update available' }) : null),
-        h('button', { type: 'button', class: 'btn btn--ghost', id: 'ws-palette-open', 'aria-keyshortcuts': 'Control+K Meta+K', on: { click: () => palette.open() } }, icon('search'), 'Search', h('kbd', { class: 'kbd', text: navigator.platform?.includes('Mac') ? '\u2318K' : 'Ctrl K' })),
         h('label', { class: 'wsbar__user' }, h('span', { text: 'Acting as' }), userSelect), themeButton, gear, reset));
   }
 
@@ -278,21 +270,7 @@ export async function initWorkspace({ openInVerifier }) {
     toast('Demo reset. Your changes were erased and the sample history was rebuilt.');
   }
 
-  // ---- status bar and command palette ----------------------------------------------------
-  statusUpdate = buildStatusBar(ctx, $('ws-status'));
   function toggleTheme() { setSettings({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); }
-  const palette = initPalette(ctx, {
-    actions: [
-      { id: 'theme', title: 'Switch between dark and light theme', keywords: 'theme dark light' },
-      { id: 'stream', title: 'Start or pause the demo stream', keywords: 'live stream start pause resume synthetic' },
-      { id: 'stream-stop', title: 'Stop the demo stream', keywords: 'live stream stop off' },
-    ],
-    run(action) {
-      if (action === 'theme') toggleTheme();
-      else if (action === 'stream' && live) { if (live.runner.state === 'live') live.runner.pause(); else live.runner.start(); }
-      else if (action === 'stream-stop' && live) live.runner.stop();
-    },
-  });
 
   // ---- boot ------------------------------------------------------------------------------
   function show(target) {
@@ -325,9 +303,12 @@ export async function initWorkspace({ openInVerifier }) {
       const built = await createWorkspace({ list: listJson, anchor, savedOps: usable ? saved.ops : [], network });
       ws = built.ws;
       ready = true;
+      // The Live chain screens real transfers against the bundled OFAC snapshot, never a demo version.
+      if (!chain) chain = new ChainWatcher({ version: ws.versions.find((v) => v.real) });
+      else chain.version = ws.versions.find((v) => v.real);
       live?.dispose();
       live = createLive(ctx);
-      live.bar = statusUpdate;
+      live.bar = () => {};
       live.runner.setSpeed(getSettings().liveSpeed);
       live.onHits = (records) => hitFlash(records, getSettings());
       if (getSettings().liveAutoStart) live.runner.start();
@@ -340,7 +321,6 @@ export async function initWorkspace({ openInVerifier }) {
       return;
     }
     drawBar();
-    statusUpdate();
     if (route) show(route);
   }
 
@@ -361,6 +341,8 @@ export async function initWorkspace({ openInVerifier }) {
       rows[next].focus();
     }
   });
+  // Polling stops while the tab is hidden and resumes when it is shown.
+  document.addEventListener('visibilitychange', () => chain?.setHidden(document.hidden));
   window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (getSettings().theme === 'system') { applyTheme(); drawBar(); } });
 
   const startup = boot();

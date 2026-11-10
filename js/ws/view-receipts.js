@@ -89,7 +89,6 @@ export function renderExplorer(ctx, root) {
       h('span', { class: 'banner__detail', text: `${ws.ledger.size} receipts in ${result.segments.length} segments, ${result.links.filter((l) => l.ok).length} of ${result.links.length} segment links intact. Checked in this browser with the same verifier as the Verify receipts page.` })));
   } } }, 'Verify the whole ledger');
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Demo ledger. ' }), 'Each receipt is signed with the public demo key and chained to the one before it. The ledger is split into segments, one list version each, so that the browser verifier can check every segment unchanged.'),
     card('Receipt explorer', { id: 'ex-title', actions: verifyAll },
       h('div', { class: 'filters' }, field('Search', q), field('Type', types), field('Decision', decisions), field('List version', versions), field('From', from), field('To', to)),
       verifyHost, host, foot));
@@ -181,7 +180,6 @@ export function renderActivity(ctx, root) {
     }), pager({ page: activity.page, size: 40, total: rows.length, onChange: (p) => { activity.page = p; draw(); } }));
   };
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'The log is the ledger. ' }), 'Each line below is a signed receipt, so the log cannot be edited without the check failing.'),
     card('Activity log', { id: 'ac-title' }, h('div', { class: 'filters' }, field('Show', select('ac-group', groups, activity.group, (v) => { activity.group = v; activity.page = 0; draw(); })), field('Who', select('ac-actor', actors, activity.actor, (v) => { activity.actor = v; activity.page = 0; draw(); }))), host));
   draw();
 }

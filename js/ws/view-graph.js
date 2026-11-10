@@ -1,49 +1,27 @@
 /** Counterparty graph: counterparties of one address (one or two hops) in this demo's synthetic payments. */
-import { card, clear, copyButton, dataTable, empty, h, icon, kv, money, segmented, shortAddr, stamp, svg } from './dom.js';
-import { addressProfile, buildGraph, busiestAddress, collectPayments, edgeWidth, GRAPH_HOPS, GRAPH_MAX_NODES, layoutGraph, suggestedAddresses } from './graph.js';
+import { card, clear, copyButton, dataTable, empty, h, icon, kv, money, segmented, shortAddr, stamp } from './dom.js';
+import { addressProfile, buildGraph, busiestAddress, collectPayments, flowModel, GRAPH_HOPS, GRAPH_MAX_NODES, suggestedAddresses } from './graph.js';
+import { esc, mount, seriesColour, tooltipBase } from './echart.js';
 
 const FALLBACK_WIDTH = 900;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 6;
-const ZOOM_STEP = 1.35;
-const LABELS_AT_ZOOM = 2.2;
-const LABEL_BUDGET = 14;
-const HOP1_LABELS = 6;
 const NARROW_PX = 600;
-const NARROW_LABELS = 5;
-const DRAG_PX = 4;
 const SUGGESTIONS = 14;
 const ALERT_LINKS = 3;
-const NODE_MIN_R = 5;
-const NODE_MAX_R = 13;
-const CENTRE_R = 15;
-const ARROW_PX = 9;
-const CURVE_PX = 16;
-const EDGE_MAX_PX = 5;
-const st = { address: '', hops: 1, selected: '' };
-export const GRAPH_CAPTION = "Direct counterparties in this demo's payments; exact list matches only; no risk scoring.";
-const SOURCE_NOTE = 'Senders, chains and assets for the seeded history are assigned by the demo and are not part of the signed receipts. The stream adds its own, and a synthetic background fills out the graph; background payments are not screened and have no receipt.';
+const ROW_PX = 40;
+const MIN_H = 300;
+/** Room beside the outer columns for "0x1234…abcd · $12,345 On list". */
+const LABEL_PX = 210;
+const st = { address: '', hops: 1, selected: '', expanded: {} };
+export const GRAPH_CAPTION = 'Demo payments. Exact list matches only, no risk scoring.';
 
 const lower = (a) => a.toLowerCase();
-
-/** Point on the way from (x1,y1) towards (x2,y2), `gap` px short of the end. */
-function shorten(x1, y1, x2, y2, gap) {
-  const d = Math.hypot(x2 - x1, y2 - y1) || 1;
-  return [x2 - ((x2 - x1) / d) * gap, y2 - ((y2 - y1) / d) * gap];
-}
-
-function nodeShape(listed, r, extra = {}) {
-  return listed
-    ? svg('rect', { x: -r, y: -r, width: r * 2, height: r * 2, transform: 'rotate(45)', class: 'gshape', ...extra })
-    : svg('circle', { r, class: 'gshape', ...extra });
-}
 
 export function renderGraph(ctx, root) {
   const { ws, live } = ctx;
   const params = ctx.takeParams('graph');
   const payments = collectPayments(ws, live.tape);
   const suggestions = suggestedAddresses(payments, ws.inForce, SUGGESTIONS);
-  if (params.address) { st.address = params.address; st.selected = ''; }
+  if (params.address) { st.address = params.address; st.selected = ''; st.expanded = {}; }
   if (GRAPH_HOPS.includes(params.hops)) st.hops = params.hops;
   if (!st.address) st.address = busiestAddress(payments);
   if (!st.selected) st.selected = st.address;
@@ -51,7 +29,7 @@ export function renderGraph(ctx, root) {
 
   const input = h('input', { id: 'gr-address', class: 'input mono', type: 'text', autocomplete: 'off', spellcheck: 'false', value: st.address, placeholder: '0x... or T...' });
   const err = h('p', { class: 'field__hint field__hint--bad', role: 'alert' });
-  const pivot = (address) => { st.address = address; st.selected = address; ctx.refresh(); };
+  const pivot = (address) => { st.address = address; st.selected = address; st.expanded = {}; ctx.refresh(); };
   const form = h('form', { class: 'graphform', novalidate: true, on: { submit: (e) => {
     e.preventDefault();
     const value = input.value.trim();
@@ -60,10 +38,7 @@ export function renderGraph(ctx, root) {
   } } }, h('label', { for: 'gr-address', class: 'sr', text: 'Address' }), input, h('button', { type: 'submit', class: 'btn btn--primary', id: 'gr-go' }, 'Show counterparties'));
 
   const graph = buildGraph(payments, st.address, ws.inForce, GRAPH_MAX_NODES, st.hops);
-  const maxValue = Math.max(1, ...graph.nodes.map((n) => n.valueUsd));
-  const maxEdge = Math.max(1, ...graph.edges.map((e) => e.usd));
   if (!graph.nodes.length) st.selected = st.address;
-  const nodeByKey = new Map(graph.nodes.map((n) => [lower(n.address), n]));
 
   // Chips: a contained, scrollable row with a fade where more is hidden.
   const chipList = h('ul', { class: 'chips', id: 'gr-chips' }, suggestions.map((s) => h('li', {}, h('button', { type: 'button', class: `chipbtn mono${s.listed ? ' chipbtn--listed' : ''}`, title: `${s.address}, ${s.counterparties} direct counterparties`, on: { click: () => pivot(s.address) } },
@@ -79,152 +54,130 @@ export function renderGraph(ctx, root) {
   hops.id = 'gr-hops';
   hops.classList.add('seg--flat');
 
-  // Canvas ------------------------------------------------------------------------------------
+  // Funds flow (Apache ECharts sankey): money in on the left, the centre, money out on the right --------
   const canvas = h('div', { class: 'graphcanvas', id: 'gr-canvas' });
-  const tip = h('div', { class: 'gtip', id: 'gr-tip', role: 'tooltip', hidden: true });
+  const host = h('div', { class: 'echost', id: 'gr-chart', tabindex: 0, role: 'group', 'aria-roledescription': 'funds flow',
+    'aria-label': `Money in and out of ${st.address}, ${st.hops} hop${st.hops > 1 ? 's' : ''}. ${GRAPH_CAPTION} Arrow keys move between addresses, Enter selects.` });
+  const announce = h('p', { class: 'sr', id: 'gr-tip', role: 'status', 'aria-live': 'polite' });
   const panel = h('aside', { class: 'graphside', id: 'gr-panel', 'aria-label': 'Selected address' });
-  let svgRoot = null;
-  let box = null;
-  let base = { w: 0, h: 0 };
-  let current = null;
+  const model = flowModel(graph, { expanded: st.expanded });
+  const order = model.nodes;
+  let focusIdx = -1;
+  const isNarrow = () => (canvas.clientWidth || FALLBACK_WIDTH) < NARROW_PX;
+  const rows = Math.max(1, ...['L2', 'L1', 'C', 'R1', 'R2'].map((c) => model.nodes.filter((n) => n.col === c).length));
+  const heightFor = () => Math.max(MIN_H, rows * ROW_PX + 24);
 
-  const showTip = (html, x, y) => {
-    tip.replaceChildren(...html);
-    tip.hidden = false;
-    const w = canvas.clientWidth;
-    tip.style.left = `${Math.max(4, Math.min(w - tip.offsetWidth - 4, x + 12))}px`;
-    tip.style.top = `${Math.max(4, y + 12)}px`;
+  const sideTotal = (col) => model.nodes.filter((n) => n.col === col).reduce((t, n) => t + n.usd, 0);
+  const sharePct = (n) => { const tot = sideTotal(n.col === 'L1' || n.col === 'L2' ? 'L1' : 'R1'); return !isNarrow() && tot > 0 && (n.col === 'L1' || n.col === 'R1') ? `${Math.round((100 * n.usd) / tot)}%` : ''; };
+  const nodeLabel = (n) => (n.more ? `+${n.more.n} more · ${money(n.usd)}` : `${shortAddr(n.address)} · ${money(n.usd)}`);
+  const tipFor = (n) => {
+    if (n.more) return `<div class="ect__head">${n.more.n} more addresses</div><div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(n.usd))}</span></div><div class="ect__note">Click to show them.</div>`;
+    const side = n.col === 'C' ? 'Centre' : n.col.startsWith('L') ? (n.col === 'L1' ? 'Paid the centre' : 'Paid a sender') : (n.col === 'R1' ? 'Paid by the centre' : 'Paid by a receiver');
+    return `<div class="ect__head">${esc(side)}</div><div class="ect__mono">${esc(shortAddr(n.address))}</div>${n.col === 'C' ? '' : `<div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(n.usd))}</span></div>`}<div class="ect__row"><span class="ect__k">Payments</span><span class="ect__v">${n.count}</span></div>${n.listed ? `<div class="ect__bad">On the list: ${esc(n.entries[0].name)}</div>` : ''}`;
   };
-  const hideTip = () => { tip.hidden = true; };
-  const tipFor = (node) => [h('strong', { class: 'mono', text: shortAddr(node.address) }), h('span', { text: `${node.count} payments, ${money(node.valueUsd)}` }), h('span', { text: `Paid to ${node.hop === 2 ? 'its linked address' : 'the centre'} ${money(node.sentUsd)}, received ${money(node.receivedUsd)}` }), node.listed ? h('span', { class: 'gtip__bad', text: `On list: ${node.entries[0].name}` }) : null];
 
-  const setZoomState = () => {
-    if (!svgRoot) return;
-    svgRoot.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`);
-    svgRoot.dataset.zoom = base.w / box.w >= LABELS_AT_ZOOM ? 'in' : 'out';
-  };
-  const resetView = () => { box = { x: 0, y: 0, w: base.w, h: base.h }; setZoomState(); };
-  const zoomAt = (factor, fx = 0.5, fy = 0.5) => {
-    const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (base.w / box.w) * factor));
-    const w = base.w / k;
-    const hgt = base.h / k;
-    box = { x: box.x + (box.w - w) * fx, y: box.y + (box.h - hgt) * fy, w, h: hgt };
-    setZoomState();
-  };
+  function build(t) {
+    const narrow = isNarrow();
+    const bad = seriesColour('block');
+    const plain = t.dark ? '#7d8a93' : '#76838c';
+    const inC = seriesColour('allow');
+    const outC = t.dark ? '#94a3b8' : '#64748b';
+    const selKey = lower(st.selected || st.address);
+    const focusId = order[focusIdx]?.id;
+    const lastDepth = st.hops === 2 ? 4 : 2;
+    // Two hops: the inner columns sit close to the centre, so their labels carry the address only (the amount is in the tooltip and the table).
+    const terse = (n) => st.hops === 2 && (n.col === 'L1' || n.col === 'R1');
+    const pads = Array.from({ length: lastDepth + 1 }, (_, d) => d).filter((d) => !model.nodes.some((n) => n.depth === d));
+    const labelSide = (n) => {
+      if (n.col === 'C') return 'bottom';
+      const leftSide = n.depth < model.nodes[0].depth;
+      // Outer columns label outward; inner columns of a two-hop view label towards the centre, so labels never sit on another column.
+      const inner = st.hops === 2 && (n.col === 'L1' || n.col === 'R1');
+      if (narrow || inner) return leftSide ? 'right' : 'left';
+      return leftSide ? 'left' : 'right';
+    };
+    return {
+      animation: false,
+      tooltip: { ...tooltipBase(t), trigger: 'item', formatter: (p) => {
+        if (p.dataType === 'edge') { const l = p.data; return `<div class="ect__row"><span class="ect__k">Payments</span><span class="ect__v">${l.count}</span></div><div class="ect__row"><span class="ect__k">Value</span><span class="ect__v">${esc(money(l.value))}</span></div>`; }
+        return p.data?._n ? tipFor(p.data._n) : '';
+      } },
+      series: [{
+        id: 'flow', type: 'sankey', layoutIterations: 0, nodeAlign: 'justify', draggable: false,
+        left: narrow ? 6 : LABEL_PX, right: narrow ? 6 : LABEL_PX,
+        top: 12, bottom: narrow ? 12 : 30,
+        nodeWidth: 6, nodeGap: 14,
+        data: [...model.nodes.map((n) => {
+          const sel = n.address && lower(n.address) === selKey;
+          const focused = n.id === focusId;
+          return {
+            name: n.id, depth: n.depth, _n: n,
+            itemStyle: { color: n.listed ? bad : n.col === 'C' ? t.ink : n.more ? t.lineStrong : n.col.startsWith('L') ? inC : outC, borderColor: (sel && n.col !== 'C') || focused ? t.focus : 'transparent', borderWidth: (sel && n.col !== 'C') || focused ? 2 : 0 },
+            label: {
+              show: true, position: labelSide(n), distance: 6,
+              formatter: () => (n.col === 'C' ? `{c|${shortAddr(n.address)}}${n.listed ? ' {tag|On list}' : ''}` : n.more ? `{more|${nodeLabel(n)}}` : `{a|${terse(n) ? `${n.address.slice(0, 6)}…${n.address.slice(-4)}` : shortAddr(n.address)}}${terse(n) ? '' : `  {v|${money(n.usd)}}${sharePct(n) ? `{p|${sharePct(n)}}` : ''}`}${n.listed ? ' {tag|On list}' : ''}`),
+              rich: {
+                a: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.mono, fontSize: narrow ? 10.5 : 11, color: n.listed ? bad : t.dim, fontWeight: n.listed ? 600 : 400 },
+                c: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.mono, fontSize: 11.5, color: n.listed ? bad : t.ink, fontWeight: 600 },
+                v: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: narrow ? 11 : 12, color: t.ink, fontWeight: 600 },
+                p: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: narrow ? 10.5 : 11, color: t.dim, padding: [0, 0, 0, 6] },
+                more: { textBorderColor: t.surface, textBorderWidth: 3, fontFamily: t.sans, fontSize: 11.5, color: t.link || t.focus, fontWeight: 600 },
+                tag: { fontFamily: t.sans, fontSize: 10, fontWeight: 700, color: '#fff', backgroundColor: bad, borderRadius: 3, padding: [1, 4] },
+              },
+              backgroundColor: narrow ? t.surface : 'transparent', padding: narrow ? [1, 3] : 0, borderRadius: 2,
+            },
+          };
+        }), ...pads.map((d) => ({ name: `pad-${d}`, depth: d, value: 0, itemStyle: { opacity: 0 }, label: { show: false }, tooltip: { show: false }, silent: true }))],
+        // Empty columns keep their place, so the centre stays in the middle when one side has no payments.
+        links: model.links.map((l) => ({ source: l.source, target: l.target, value: Math.max(l.usd, 1), count: l.count })),
+        lineStyle: { color: 'source', opacity: t.dark ? 0.22 : 0.18, curveness: 0.5 },
+        emphasis: { focus: 'adjacency', lineStyle: { opacity: 0.45 } },
+        labelLayout: { hideOverlap: true },
+      }],
+    };
+  }
+
+  const chart = mount(host, build, (inst) => {
+    inst.on('click', (p) => {
+      const n = p.data?._n;
+      if (!n || p.dataType !== 'node') return;
+      if (n.more) { st.expanded = { ...st.expanded, [n.col]: true }; ctx.refresh(); return; }
+      select(n.address);
+    });
+    inst.on('dblclick', (p) => { const n = p.data?._n; if (n && !n.more && n.col !== 'C') pivot(n.address); });
+  });
 
   const select = (address) => {
     st.selected = address;
-    svgRoot?.querySelectorAll('.gnode').forEach((g) => g.classList.toggle('is-selected', lower(g.dataset.address) === lower(address)));
-    svgRoot?.querySelectorAll('.gedge').forEach((e) => e.classList.toggle('gedge--sel', lower(e.dataset.a) === lower(address) || lower(e.dataset.b) === lower(address)));
+    host.dataset.selected = address;
+    chart.render();
     drawPanel();
   };
+  const sizeHost = () => { host.style.height = `${heightFor()}px`; };
 
-  const drawCanvas = () => {
-    const width = Math.max(260, Math.round(canvas.clientWidth) || FALLBACK_WIDTH);
-    if (current === width) return;
-    current = width;
-    const lay = layoutGraph(graph, width);
-    base = { w: lay.width, h: lay.height };
-    const at = new Map(lay.pos.map((p) => [lower(p.node.address), p]));
-    at.set(lower(st.address), { node: graph.center, x: lay.cx, y: lay.cy });
-    const radius = (key) => (key === lower(st.address) ? CENTRE_R : NODE_MIN_R + (NODE_MAX_R - NODE_MIN_R) * Math.sqrt((nodeByKey.get(key)?.valueUsd ?? 0) / maxValue));
-    const next = svg('svg', { class: 'graph', role: 'group', id: 'gr-svg', width: lay.width, height: lay.height, 'aria-label': `Counterparties of ${st.address}, ${st.hops} hop${st.hops > 1 ? 's' : ''}. ${GRAPH_CAPTION}` });
-    next.style.height = `${lay.height}px`;
-    const marker = (id, cls) => svg('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: ARROW_PX, markerHeight: ARROW_PX, markerUnits: 'userSpaceOnUse', orient: 'auto' }, svg('path', { d: 'M0 1 L10 5 L0 9 z', class: cls }));
-    next.append(svg('defs', {}, marker('gr-arrow', 'garrow'), marker('gr-arrow-bad', 'garrow garrow--bad')));
-    next.append(svg('rect', { x: -5000, y: -5000, width: 10000, height: 10000, class: 'gbg' }));
-
-    const reverse = new Set(graph.edges.map((e) => `${lower(e.from)}>${lower(e.to)}`));
-    const edgeLayer = svg('g', { class: 'gedges' });
-    for (const e of graph.edges) {
-      const a = at.get(lower(e.from));
-      const b = at.get(lower(e.to));
-      if (!a || !b) continue;
-      const both = reverse.has(`${lower(e.to)}>${lower(e.from)}`);
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const off = both ? CURVE_PX : 0;
-      const mx = (a.x + b.x) / 2 + (-dy / d) * off;
-      const my = (a.y + b.y) / 2 + (dx / d) * off;
-      const [sx, sy] = shorten(mx, my, a.x, a.y, -(radius(lower(e.from)) + 2));
-      const [ex, ey] = shorten(mx, my, b.x, b.y, radius(lower(e.to)) + ARROW_PX / 2 + 1);
-      const listed = Boolean(nodeByKey.get(lower(e.from))?.listed || nodeByKey.get(lower(e.to))?.listed || (graph.center.listed && (lower(e.from) === lower(st.address) || lower(e.to) === lower(st.address))));
-      const path = `M${sx.toFixed(1)} ${sy.toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`;
-      const line = svg('path', { d: path, class: `gedge${listed ? ' gedge--listed' : ''}${[lower(e.from), lower(e.to)].includes(lower(st.selected)) ? ' gedge--sel' : ''}${lower(e.from) === lower(st.address) || lower(e.to) === lower(st.address) ? '' : ' gedge--far'}`, 'data-a': e.from, 'data-b': e.to, 'stroke-width': edgeWidth(e.usd, maxEdge, 1, EDGE_MAX_PX).toFixed(2), 'marker-end': `url(#${listed ? 'gr-arrow-bad' : 'gr-arrow'})`, fill: 'none' });
-      const hit = svg('path', { d: path, class: 'gedgehit', fill: 'none' });
-      const text = [h('strong', { text: `${shortAddr(e.from)} to ${shortAddr(e.to)}` }), h('span', { text: `${e.count} payment${e.count === 1 ? '' : 's'}, ${money(e.usd)}` })];
-      hit.addEventListener('pointermove', (ev) => { const r = canvas.getBoundingClientRect(); showTip(text, ev.clientX - r.left, ev.clientY - r.top); });
-      hit.addEventListener('pointerleave', hideTip);
-      edgeLayer.append(line, hit);
-    }
-    next.append(edgeLayer);
-
-    let labels = 0;
-    const budget = lay.width < NARROW_PX ? NARROW_LABELS : LABEL_BUDGET;
-    const hop1Labels = lay.width < NARROW_PX ? 2 : HOP1_LABELS;
-    let hop1Seen = 0;
-    const nodeLayer = svg('g', { class: 'gnodes' });
-    const drawNode = (node, x, y, isCentre) => {
-      const key = lower(node.address);
-      const r = isCentre ? CENTRE_R : radius(key);
-      const alwaysLabel = isCentre || (labels < budget && (node.listed || (node.hop === 1 && hop1Seen++ < hop1Labels)));
-      if (alwaysLabel && !isCentre) labels++;
-      const g = svg('g', { class: `gnode${node.listed ? ' gnode--listed' : ''}${isCentre ? ' gnode--centre' : ''}${node.hop === 2 ? ' gnode--hop2' : ''}${lower(st.selected) === key ? ' is-selected' : ''}`, transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, tabindex: 0, role: 'button', 'data-address': node.address,
-        'aria-label': isCentre ? `Centre, ${shortAddr(node.address)}${node.listed ? ', exact match on the list' : ''}. Press Enter to inspect.` : `${shortAddr(node.address)}${node.listed ? ', exact match on the list' : ''}, ${node.count} payments, ${money(node.valueUsd)}. Press Enter to inspect.` });
-      g.append(svg('circle', { r: r + 9, class: 'ghit' }), nodeShape(node.listed, node.listed ? r * 0.9 : r));
-      const label = svg('text', { y: r + 14, 'text-anchor': 'middle', class: `glabel${isCentre ? ' glabel--centre' : ''}${alwaysLabel ? '' : ' glabel--hover'}` });
-      label.textContent = shortAddr(node.address);
-      g.append(label);
-      const showNode = () => { const rect = g.getBoundingClientRect(); const c = canvas.getBoundingClientRect(); showTip(isCentre ? [h('strong', { class: 'mono', text: shortAddr(node.address) }), h('span', { text: `Centre of the graph, ${graph.paymentCount} payments` })] : tipFor(node), rect.left - c.left + rect.width / 2, rect.top - c.top + rect.height); };
-      g.addEventListener('pointerenter', showNode);
-      g.addEventListener('pointerleave', hideTip);
-      g.addEventListener('focus', showNode);
-      g.addEventListener('blur', hideTip);
-      g.addEventListener('click', () => select(node.address));
-      g.addEventListener('dblclick', () => { if (!isCentre) pivot(node.address); });
-      g.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(node.address); } else if (e.key === 'Escape') hideTip();
-      });
-      nodeLayer.append(g);
-    };
-    const pos = lay.pos.slice().sort((a, b) => (b.node.listed - a.node.listed) || b.node.valueUsd - a.node.valueUsd);
-    for (const p of pos) drawNode(p.node, p.x, p.y, false);
-    drawNode(graph.center, lay.cx, lay.cy, true);
-    next.append(nodeLayer);
-
-    // Pan by dragging the background; wheel and buttons zoom.
-    let drag = null;
-    next.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.gnode') || e.button !== 0) return;
-      drag = { x: e.clientX, y: e.clientY, bx: box.x, by: box.y, moved: false, id: e.pointerId };
-    });
-    next.addEventListener('pointermove', (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const rect = next.getBoundingClientRect();
-      if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < DRAG_PX) return;
-      if (!drag.moved) { drag.moved = true; next.setPointerCapture(e.pointerId); next.classList.add('is-panning'); hideTip(); }
-      box = { ...box, x: drag.bx - ((e.clientX - drag.x) * box.w) / rect.width, y: drag.by - ((e.clientY - drag.y) * box.h) / rect.height };
-      setZoomState();
-    });
-    const endDrag = () => { drag = null; next.classList.remove('is-panning'); };
-    next.addEventListener('pointerup', endDrag);
-    next.addEventListener('pointercancel', endDrag);
-    next.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const rect = next.getBoundingClientRect();
-      zoomAt(e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, (e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height);
-    }, { passive: false });
-
-    if (svgRoot) svgRoot.replaceWith(next); else canvas.prepend(next);
-    svgRoot = next;
-    resetView();
+  const focusNode = (i) => {
+    focusIdx = (i + order.length) % order.length;
+    const n = order[focusIdx];
+    chart.render();
+    chart.chart()?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: focusIdx });
+    announce.textContent = n.more ? `${n.more.n} more addresses, ${money(n.usd)}. Press Enter to show them.` : `${n.col === 'C' ? 'Centre, ' : n.col.startsWith('L') ? 'Money in from ' : 'Money out to '}${shortAddr(n.address)}${n.listed ? ', exact match on the list' : ''}${n.col === 'C' ? '' : `, ${money(n.usd)}`}. Press Enter to inspect.`;
+    host.dataset.focus = n.address ?? n.id;
   };
-
-  const tool = (id, label, text, onClick) => h('button', { type: 'button', class: 'gtool', id, 'aria-label': label, title: label, on: { click: onClick } }, text);
-  const tools = h('div', { class: 'gtools', role: 'group', 'aria-label': 'Zoom and pan' },
-    tool('gr-zin', 'Zoom in', '+', () => zoomAt(ZOOM_STEP)), tool('gr-zout', 'Zoom out', '−', () => zoomAt(1 / ZOOM_STEP)), tool('gr-reset', 'Reset view', 'Reset', resetView));
-  const more = graph.hidden ? h('p', { class: 'gmore', id: 'gr-more', text: `+${graph.hidden} more not drawn (showing at most ${GRAPH_MAX_NODES} addresses)` }) : null;
+  host.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); focusNode(focusIdx + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); focusNode(focusIdx - 1); }
+    else if ((e.key === 'Enter' || e.key === ' ') && focusIdx >= 0) {
+      e.preventDefault();
+      const n = order[focusIdx];
+      if (n.more) { st.expanded = { ...st.expanded, [n.col]: true }; ctx.refresh(); } else select(n.address);
+    } else if (e.key === 'Escape') { focusIdx = -1; delete host.dataset.focus; chart.chart()?.dispatchAction({ type: 'hideTip' }); chart.render(); }
+  });
+  host.addEventListener('blur', () => { chart.chart()?.dispatchAction({ type: 'hideTip' }); });
+  const heads = h('div', { class: 'flowheads', 'aria-hidden': 'true' },
+    h('span', { text: `Money in${st.hops === 2 ? ' (2 hops)' : ''} · ${money(sideTotal('L1'))}` }), h('span', { text: `Money out${st.hops === 2 ? ' (2 hops)' : ''} · ${money(sideTotal('R1'))}` }));
+  const anyMore = Object.values(st.expanded).some(Boolean);
+  const collapse = anyMore ? h('button', { type: 'button', class: 'btn btn--ghost', id: 'gr-collapse', on: { click: () => { st.expanded = {}; ctx.refresh(); } } }, 'Show top 8 only') : null;
+  const more = graph.hidden ? h('p', { class: 'gmore', id: 'gr-more', text: `${graph.hidden} more not loaded (at most ${GRAPH_MAX_NODES} addresses)` }) : null;
 
   // Side panel --------------------------------------------------------------------------------
   function drawPanel() {
@@ -257,15 +210,16 @@ export function renderGraph(ctx, root) {
 
   // Page --------------------------------------------------------------------------------------
   const legend = h('ul', { class: 'legend legend--inline' },
-    h('li', {}, svg('svg', { viewBox: '0 0 16 16', class: 'legend__swatch', 'aria-hidden': 'true' }, svg('circle', { cx: 8, cy: 8, r: 6, class: 'gshape' })), 'Not on the list'),
-    h('li', {}, svg('svg', { viewBox: '0 0 16 16', class: 'legend__swatch', 'aria-hidden': 'true' }, svg('rect', { x: 3, y: 3, width: 10, height: 10, transform: 'rotate(45 8 8)', class: 'gshape gshape--listed' })), 'Exact match on the list in force'),
-    h('li', {}, 'Arrow: direction of payments. Thickness: total value.'),
-    h('li', {}, 'Drag to pan, wheel to zoom, double-click a node to centre on it.'));
+    h('li', {}, h('span', { class: 'flowkey flowkey--in', 'aria-hidden': 'true' }), 'Sender'),
+    h('li', {}, h('span', { class: 'flowkey', 'aria-hidden': 'true' }), 'Receiver'),
+    h('li', {}, h('span', { class: 'flowkey flowkey--bad', 'aria-hidden': 'true' }), 'On the list in force'),
+    h('li', { class: 'legend__note' }, 'Width = USD value'),
+    collapse ? h('li', {}, collapse) : null);
 
   const body = graph.nodes.length
     ? h('div', { class: 'graphlayout' }, h('div', { class: 'graphmain' }, canvas, legend), panel)
     : empty('No payments for this address in the demo.', 'Pick a suggested address, or paste one that appears in the receipt explorer.');
-  canvas.append(tools, tip);
+  canvas.append(heads, host, announce);
   if (more) canvas.append(more);
 
   const table = graph.nodes.length ? dataTable({
@@ -284,23 +238,43 @@ export function renderGraph(ctx, root) {
     ? `${graph.nodes.length} of ${graph.totalCounterparties} addresses within 2 hops drawn; ${graph.paymentCount} payments touch the centre directly.`
     : `${graph.paymentCount} payments with ${graph.totalCounterparties} direct counterparties${graph.hidden ? `; ${graph.nodes.length} drawn` : ''}.`;
 
+  // Flow metrics for the centre address, direct (one-hop) payments only.
+  const cp = addressProfile(payments, st.address, ws.inForce);
+  const direct = graph.nodes.filter((n) => n.hop === 1);
+  const inflows = direct.map((n) => n.sentUsd).sort((x, y) => y - x);
+  const top5 = inflows.slice(0, 5).reduce((t, v) => t + v, 0);
+  const listedUsd = direct.filter((n) => n.listed).reduce((t, n) => t + n.sentUsd + n.receivedUsd, 0);
+  const share = (v, of) => (of > 0 ? `${((100 * v) / of).toFixed(1)}%` : '0%');
+  const metric = (label, value, sub) => h('div', { class: 'kpi' }, h('dt', {}, label), h('dd', { text: value }), h('p', { class: 'kpi__sub', text: sub }));
+  const metrics = graph.nodes.length ? h('dl', { class: 'kpis kpis--flow', id: 'gr-metrics' },
+    metric('Money in', money(cp.inUsd), `${cp.paymentsIn} payments`),
+    metric('Money out', money(cp.outUsd), `${cp.paymentsOut} payments`),
+    metric('Net flow', `${cp.inUsd - cp.outUsd >= 0 ? '+' : '−'}${money(Math.abs(cp.inUsd - cp.outUsd))}`, cp.inUsd >= cp.outUsd ? 'More in than out' : 'More out than in'),
+    metric('Counterparties', String(cp.counterparties), `${direct.filter((n) => n.listed).length} on the list in force`),
+    metric('Top 5 senders', share(top5, cp.inUsd), 'of money in'),
+    metric('Exposure to listed', money(listedUsd), `${share(listedUsd, cp.totalUsd)} of total value`)) : null;
+
   root.append(...[
-    h('p', { class: 'notice' }, h('strong', { text: 'Synthetic payments. ' }), GRAPH_CAPTION, ' ', SOURCE_NOTE),
-    card('Counterparty graph', { id: 'gr-card', sub: 'Click a node to inspect it' }, h('div', { class: 'cardbody graphbody' },
+    card('Counterparties', { id: 'gr-card' }, h('div', { class: 'cardbody graphbody' },
       form, err,
       h('div', { class: 'graphpick' }, h('p', { class: 'field__hint', text: 'Suggested starting points (busiest first, number = direct counterparties)' }), chipScroll),
       h('div', { class: 'graphhead' },
         h('span', { class: 'graphhead__label', text: 'Centre' }), h('span', { class: 'mono graphhead__addr', id: 'gr-selected', text: st.address }),
         graph.center.listed ? h('span', { class: 'chip chip--bad', text: `Exact list match: ${graph.center.entries.map((e) => e.name).join('; ').slice(0, 80)}` }) : h('span', { class: 'chip chip--neutral', text: 'Not on the list in force' }),
         h('span', { class: 'graphhead__hops' }, h('span', { class: 'graphhead__label', text: 'Hops' }), hops)),
-      h('p', { class: 'field__hint', id: 'gr-summary', text: summary }),
+      metrics,
+      h('p', { class: 'field__hint', id: 'gr-summary', text: `${summary} ${GRAPH_CAPTION}` }),
       body)),
     table ? card(st.hops === 2 ? 'Counterparties within two hops, as a table' : 'Counterparties as a table', { id: 'gr-table' }, table) : null].filter(Boolean));
 
   if (graph.nodes.length) {
     drawPanel();
-    drawCanvas();
-    new ResizeObserver(() => drawCanvas()).observe(canvas);
+    sizeHost();
+    host.dataset.selected = st.selected;
+    host.dataset.nodes = String(model.nodes.length);
+    host.dataset.centreListed = String(Boolean(graph.center.listed));
+    let narrowNow = null;
+    new ResizeObserver(() => { const n = isNarrow(); if (n !== narrowNow) { narrowNow = n; chart.render(); } }).observe(canvas);
   }
   fade();
   void icon;

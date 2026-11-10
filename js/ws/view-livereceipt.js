@@ -8,7 +8,7 @@ export function liveReceiptView(ctx, record) {
   const out = h('div', { class: 'receipt-live', role: 'status', 'aria-live': 'polite' });
   const body = h('div', { class: 'case' });
   body.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Synthetic payment. ' }), `The payment never happened. The decision and receipt are real. Stream receipts are kept in a rolling window of ${LIVE_MAX_RECEIPTS} and are not part of the workspace ledger.`),
+    h('p', { class: 'demo-line' }, `Sample payment. The decision and receipt are real (rolling window of ${LIVE_MAX_RECEIPTS}).`),
     kv([
       ['Decision', outcomeTag(record.outcome)],
       ['Chain and asset', `${CHAIN_LABEL[record.chain]}, ${record.asset}`],
@@ -31,8 +31,7 @@ export function liveReceiptView(ctx, record) {
     const r = await ctx.run({ op: 'screen', actor: 'api', source: 'api', address: record.to, amount: record.amountUsd, originator: record.originator });
     if (r.ok && r.result.created.length) { ctx.toast(`Alert ${r.result.created[0].id} opened in the queue.`); ctx.openAlert(r.result.created[0].id); }
   } } }, 'Send to the alert queue');
-  body.append(h('div', { class: 'btnrow' }, verify, send, h('button', { type: 'button', class: 'btn', on: { click: () => ctx.go('graph', { address: record.to }) } }, 'Counterparties')), out,
-    entry ? null : h('p', { class: 'field__hint', text: 'This receipt has left the rolling window, so it can no longer be verified here.' }),
-    h('p', { class: 'field__hint', text: 'Sending to the queue screens the same address and amount again in the workspace, which signs a new receipt in the workspace ledger and opens a case.' }));
+  body.append(...[h('div', { class: 'btnrow' }, verify, send, h('button', { type: 'button', class: 'btn', on: { click: () => ctx.go('graph', { address: record.to }) } }, 'Counterparties')), out,
+    entry ? null : h('p', { class: 'field__hint', text: 'This receipt has left the rolling window, so it can no longer be verified here.' })].filter(Boolean));
   return body;
 }

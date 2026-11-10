@@ -14,11 +14,12 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e-moat")
 SIZES = {"1440": {"width": 1440, "height": 900}, "390": {"width": 390, "height": 844}}
-ROUTES = ["dashboard", "network", "archive", "proofgap", "live", "flow", "value"]
+ROUTES = ["dashboard", "network", "archive", "proofgap", "live"]
 failures: list[str] = []
 
 
@@ -48,13 +49,14 @@ def main(base: str, shots: Path) -> int:
     foreign: list[str] = []
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
+        rpc_fixture.patch(browser)
         for size_name, viewport in SIZES.items():
             for theme in ("dark", "light"):
                 ctx = browser.new_context(viewport=viewport)
                 page = ctx.new_page()
                 page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
                 page.on("pageerror", lambda e: errors.append(str(e)))
-                page.on("request", lambda r: foreign.append(r.url) if not r.url.startswith(origin) and not r.url.startswith(("data:", "blob:")) else None)
+                page.on("request", lambda r: foreign.append(r.url) if not rpc_fixture.allowed(r.url, origin) else None)
                 page.goto(urljoin(base, "app.html#dashboard"))
                 page.evaluate("t => localStorage.setItem('tollgate-demo-settings-v1', JSON.stringify({theme: t}))", theme)
                 for route in ROUTES:
@@ -82,20 +84,22 @@ def main(base: str, shots: Path) -> int:
             open_view(page, base, "dashboard")
 
         # chart: legend toggle and zoom
-        btn = page.locator("#ws-view-dashboard .legend__btn").first
+        btn = page.locator("#dash-volume .legend__btn").first
         btn.click()
         expect(btn.get_attribute("aria-pressed") == "false", "legend button switches a series off")
         btn.click()
-        box = page.locator("#ws-view-dashboard .tbrush__handle").first.bounding_box()
-        page.mouse.move(box["x"] + 3, box["y"] + 8)
-        page.mouse.down()
-        page.mouse.move(box["x"] + 200, box["y"] + 8, steps=5)
-        page.mouse.up()
-        expect(page.locator("#ws-view-dashboard .tchartbox__reset").first.is_visible(), "dragging the brush zooms and offers Reset zoom")
-        page.locator("#ws-view-dashboard .tchartbox__reset").first.click()
-        plot = page.locator("#ws-view-dashboard .tchart__hit").first.bounding_box()
-        page.mouse.move(plot["x"] + 200, plot["y"] + 60)
-        expect(page.locator("#ws-view-dashboard .tchart__cross").first.get_attribute("visibility") == "visible", "crosshair shows on hover")
+        chart = page.locator("#dash-volume .tchart").first
+        page.wait_for_function("() => { const el = document.querySelector('#dash-volume .tchart__canvas'); return el && window.echarts && echarts.getInstanceByDom(el); }")
+        chart.focus()
+        page.keyboard.press("+")
+        expect(page.locator("#dash-volume .tchartbox__reset").first.is_visible(), "zooming with the keyboard offers Reset zoom")
+        page.locator("#dash-volume .tchartbox__reset").first.click()
+        expect(not page.locator("#dash-volume .tchartbox__reset").first.is_visible(), "Reset zoom restores the full range")
+        box = page.locator("#dash-volume .tchart__canvas").first.bounding_box()
+        page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] * 0.5)
+        page.wait_for_timeout(300)
+        expect(page.locator("#dash-volume .tchart .ect").first.is_visible(), "tooltip shows on hover")
+        expect(page.locator("#dash-volume .tchartbox__bar").count() >= 1 and page.locator("#dash-volume .tbrush").count() == 0, "no brush strip under the chart")
 
         # network
         open_view(page, base, "network")
@@ -130,7 +134,7 @@ def main(base: str, shots: Path) -> int:
         # live gate
         open_view(page, base, "live")
         page.click("#lv-toggle")
-        page.wait_for_selector("#ws-view-live .kpis:has-text('Gate')")
+        page.wait_for_function("() => document.querySelectorAll('#lv-tape tr').length >= 3")
         page.wait_for_timeout(4000)
         expect("Released" in page.inner_text("#lv-tape-card"), "live tape shows gate decisions")
         page.click("#lv-gate-none")

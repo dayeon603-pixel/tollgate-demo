@@ -23,7 +23,7 @@ function tone() {
 export function hitFlash(records, settings) {
   if (!records.some((r) => r.outcome === 'BLOCK')) return;
   if (settings.hitFlash) {
-    const bar = document.getElementById('ws-status');
+    const bar = document.querySelector('.top');
     bar?.setAttribute('data-hit', 'true');
     setTimeout(() => bar?.removeAttribute('data-hit'), FLASH_MS);
   }

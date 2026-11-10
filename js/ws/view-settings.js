@@ -66,7 +66,6 @@ export function renderSettings(ctx, root) {
   });
 
   root.append(...[
-    h('p', { class: 'notice' }, 'These settings are saved in this browser only and apply straight away. Nothing is sent anywhere.'),
     settingsStorageOk() ? null : h('p', { class: 'banner', 'data-state': 'fail', role: 'alert', id: 'set-storage' }, 'This browser would not save settings. They apply until you reload.'),
     h('div', { class: 'cols' },
       h('div', { class: 'setcol' },
@@ -91,6 +90,7 @@ export function renderSettings(ctx, root) {
           choice('Rows per page', 'rowsPerPage', ROWS_OPTIONS.map((v) => [v, v === 'auto' ? 'Auto' : String(v)])),
           choice('Live stream speed', 'liveSpeed', SPEED_OPTIONS.map((v) => [v, `${v}x`]), 'Used when the demo stream starts.'),
           toggle('Start the stream automatically', 'liveAutoStart', 'Off by default. The stream is synthetic.'),
+          toggle('Connect to Ethereum mainnet automatically', 'chainAutoConnect', 'Live chain reads public data from ethereum-rpc.publicnode.com (fallback eth.drpc.org). Turn off to connect only when you press Connect.'),
           toggle('Flash on list hits', 'hitFlash', 'A brief visual flash in the status bar when the stream screens a hit.'),
           toggle('Sound on list hits', 'hitSound', 'A short tone. Off by default.'),
           choice('Address display', 'addressDisplay', [['short', 'Short'], ['full', 'Full']]),

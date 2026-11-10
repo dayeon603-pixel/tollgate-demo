@@ -8,6 +8,7 @@ import { loadMoatData } from './moat-data.js';
 import { chip } from './moat-ui.js';
 import { sparkline } from './live-chart.js';
 import { describe } from './describe.js';
+import { chainHero } from './view-chain.js';
 import { isOpenWork } from './engine.js';
 import { summary } from './metrics.js';
 import { ageLabel } from './metrics.js';
@@ -40,8 +41,7 @@ function compounds(ctx) {
     proof.querySelector('#cp-proof-s').textContent = `${row.gap.slice(row.gap.indexOf('['))} of ${row.n} USDC freezes on Ethereum after 2023-12-09 have no provable order from public data.`;
   }).catch(() => { proof.querySelector('#cp-proof-v').textContent = 'unavailable'; });
   return h('section', { class: 'compounds', id: 'dash-compounds', 'aria-labelledby': 'dash-compounds-h' },
-    h('h2', { class: 'compounds__title', id: 'dash-compounds-h', text: 'Why this compounds' }),
-    h('p', { class: 'compounds__lead', text: 'Each of these gets stronger with use and cannot be copied after the fact. The network and gate numbers are demo members and synthetic payments; the archive and proof-gap numbers are real.' }),
+    h('h2', { class: 'compounds__title', id: 'dash-compounds-h', text: 'Network and proof' }),
     h('div', { class: 'compounds__grid' },
       tile('cp-network', 'network', 'Re-screens avoided via accepted receipts (demo)', formatNumber(net.avoided), `${net.pinned} demo members pinned. ${net.rescreened} inbound payments screened here.`, chip('Demo data', 'neutral')),
       archive,
@@ -58,14 +58,13 @@ export function renderDashboard(ctx, root) {
   const versionLine = s.listVersion ? `${s.listVersion.label}${s.listVersion.real ? ' (OFAC snapshot)' : ' (demo)'}` : 'none';
 
   root.append(
-    h('p', { class: 'notice' }, h('strong', { text: 'Synthetic demo data. ' }), `The ${s.total} payments below were generated for this demo. Receipts, signatures and the list are real; the volumes, counterparties and people are not.`),
+    chainHero(ctx),
+    h('p', { class: 'demo-line' }, 'Below the live chain: sample payments and people. The sanctions list, signatures and receipts are real.'),
     h('dl', { class: 'kpis' },
-      kpi('Screened, 30 days', s.total, 'demo volume', 'explorer', ctx, { values: s.rows.map((r) => r.total), cls: 'allow' }),
-      kpi('Allowed', s.allow, pct(s.allow, s.total), null, ctx, { values: s.rows.map((r) => r.allow), cls: 'allow' }),
+      kpi('Screened, 30 days', s.total, `${s.allow} allowed`, 'explorer', ctx, { values: s.rows.map((r) => r.total), cls: 'allow' }),
       kpi('Held by policy', s.hold, pct(s.hold, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.hold), cls: 'hold' }),
       kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.block), cls: 'block' }),
       kpi('Open alerts', s.openAlerts, `${s.awaitingApproval} awaiting approval`, 'alerts', ctx),
-      kpi('Receipts issued', s.receipts, `in ${s.segments} ledger segments`, 'explorer', ctx),
       kpi('List in force', s.listVersion ? s.listVersion.label : 'none', `${s.listVersion?.real ? 'OFAC snapshot' : 'demo version'}${s.listChangedAt ? `, since ${formatDate(s.listChangedAt)}` : ''}`, 'lists', ctx),
     ),
   );
@@ -77,7 +76,7 @@ export function renderDashboard(ctx, root) {
     markers: markers.map((m) => ({ t: Date.parse(`${m.date}T00:00:00Z`), label: m.label })),
   });
   volumeChart.update(s.rows.map((r) => ({ t: Date.parse(`${r.date}T00:00:00Z`), values: { allow: r.allow, hold: r.hold, block: r.block } })));
-  const volume = card('Screenings per day', { id: 'dash-volume', sub: 'Last 30 days, UTC. Synthetic volume. Drag the strip under the chart to zoom, or drag across the bars.' }, volumeChart.el);
+  const volume = card('Screenings per day', { id: 'dash-volume', sub: 'Last 30 days, UTC' }, volumeChart.el);
 
   const statusItems = [['open', 'Open'], ['in_review', 'In review'], ['escalated', 'Escalated'], ['cleared', 'Cleared'], ['confirmed', 'Confirmed']].map(([key, label]) => ({ label, value: s.byStatus[key], cls: `s-${key}` }));
   const status = card('Alerts by status', { id: 'dash-status', sub: `${ws.alerts.length} alerts in total` },
@@ -100,10 +99,10 @@ export function renderDashboard(ctx, root) {
       : h('p', { class: 'card__note', text: 'Nothing is waiting.' }));
 
   const recent = ws.ledger.entries.filter((e) => !['stablecoin_payment_screen', 'segment_open', 'watchlist_rescreen'].includes(e.receipt.action.type)).slice(-8).reverse();
-  const activity = card('Recent activity', { id: 'dash-activity', sub: 'Every line is a signed receipt' },
+  const activity = card('Recent activity', { id: 'dash-activity' },
     h('ul', { class: 'feed' }, recent.map((entry) => {
       const d = describe(ws, entry);
-      return h('li', {}, h('span', { class: 'feed__time mono', text: stamp(entry.receipt.action.requested_at) }), h('span', { class: 'feed__text' }, h('strong', { text: d.actor }), ' ', d.text),
+      return h('li', {}, h('span', { class: 'feed__time tnum', text: stamp(entry.receipt.action.requested_at) }), h('span', { class: 'feed__text' }, h('strong', { text: d.actor }), ' ', d.text),
         h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(entry.receipt.receipt_id) } }, entry.receipt.receipt_id.replace('rcpt:', '')));
     })));
 
