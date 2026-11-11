@@ -1,5 +1,6 @@
 /** Counterparty graph: counterparties of one address (one or two hops) in this demo's synthetic payments. */
 import { card, clear, copyButton, dataTable, empty, h, icon, kv, money, segmented, shortAddr, stamp } from './dom.js';
+import { esc, mount, seriesColour, tooltipBase } from './echart.js';
 import { addressProfile, buildGraph, busiestAddress, collectPayments, GRAPH_HOPS, GRAPH_MAX_NODES, suggestedAddresses } from './graph.js';
 
 const SUGGESTIONS = 6;
@@ -47,48 +48,61 @@ export function renderGraph(ctx, root) {
   hops.id = 'gr-hops';
   hops.classList.add('seg--flat');
 
-  const topInflows = graph.nodes.filter((n) => n.hop === 1).map((n) => n.sentUsd).sort((x, y) => y - x);
-  const topIn = topInflows.reduce((t, v) => t + v, 0);
-  const topNote = topInflows.length > 5 && topIn > 0 ? ` · top 5 = ${((100 * topInflows.slice(0, 5).reduce((t, v) => t + v, 0)) / topIn).toFixed(0)}%` : '';
-
-  // Ranked counterparties: who paid this address and who it paid, largest first --------------------
-  const LIST_TOP = 10;
+  // Figure: the ten largest direct counterparties by total value, money in and out as two series ------
+  const FIG_TOP = 10;
+  const direct1 = graph.nodes.filter((n) => n.hop !== 2);
+  const figRows = direct1.map((n) => ({ ...n, total: n.sentUsd + n.receivedUsd }))
+    .sort((a, b) => b.total - a.total || a.address.localeCompare(b.address)).slice(0, FIG_TOP);
+  const allUsd = direct1.reduce((t, n) => t + n.sentUsd + n.receivedUsd, 0);
+  const topUsd = figRows.reduce((t, n) => t + n.total, 0);
   const panel = h('aside', { class: 'graphside', id: 'gr-panel', 'aria-label': 'Selected address' });
-  const directNodes = graph.nodes.filter((n) => n.hop !== 2);
-  const sideRows = (key) => directNodes.filter((n) => n[key] > 0).map((n) => ({ ...n, usd: n[key] })).sort((a, b) => b.usd - a.usd || a.address.localeCompare(b.address));
-  const ranked = (title, key, id, note = '') => {
-    const rows = sideRows(key);
-    const total = rows.reduce((t, r) => t + r.usd, 0);
-    const max = rows[0]?.usd || 1;
-    const open = Boolean(st.expanded[id]);
-    const shown = open ? rows : rows.slice(0, LIST_TOP);
-    const list = h('ol', { class: 'rank' }, shown.map((r, i) => {
-      const sel = lower(st.selected) === lower(r.address);
-      return h('li', { class: `rank__row${r.listed ? ' rank__row--bad' : ''}${sel ? ' is-selected' : ''}`, 'data-address': r.address },
-        h('span', { class: 'rank__n', text: String(i + 1) }),
-        h('button', { type: 'button', class: 'rank__addr mono', title: `${r.address}. Double-click to centre on it.`, on: { click: () => select(r.address), dblclick: () => pivot(r.address) } }, shortAddr(r.address)),
-        r.listed ? h('span', { class: 'chip chip--bad rank__tag', text: 'On list' }) : h('span', { class: 'rank__tag' }),
-        h('span', { class: 'rank__bar', 'aria-hidden': 'true' }, h('span', { class: 'rank__fill', style: undefined, 'data-w': String(Math.max(2, Math.round((100 * r.usd) / max))) })),
-        h('span', { class: 'rank__usd', text: money(r.usd) }),
-        h('span', { class: 'rank__pct', text: total ? `${((100 * r.usd) / total).toFixed(1)}%` : '' }));
-    }));
-    const toggle = rows.length > LIST_TOP
-      ? h('button', { type: 'button', class: 'linkbtn rank__more', id: `${id}-more`, on: { click: () => { st.expanded = { ...st.expanded, [id]: !open }; ctx.refresh(); } } }, open ? `Show top ${LIST_TOP}` : `Show all ${rows.length}`)
-      : null;
-    return h('section', { class: `rankcard rankcard--${key === 'sentUsd' ? 'in' : 'out'}`, id, 'aria-label': title },
-      h('header', { class: 'rankcard__head' }, h('h3', { text: title }), h('span', { class: 'rankcard__sum', text: `${money(total)} ${key === 'sentUsd' ? 'from' : 'to'} ${rows.length} address${rows.length === 1 ? '' : 'es'}${note}` })),
-      rows.length ? list : h('p', { class: 'field__hint', text: 'None in the demo payments.' }), toggle);
-  };
-  const lists = h('div', { class: 'ranks', id: 'gr-chart', 'data-nodes': String(directNodes.length), 'data-centre-listed': String(Boolean(graph.center.listed)) },
-    ranked('Money in, by sender', 'sentUsd', 'gr-in', topNote),
-    ranked('Money out, by receiver', 'receivedUsd', 'gr-out'));
-  // Bar widths are set from data attributes so the page needs no inline style attribute (CSP).
-  const sizeBars = () => lists.querySelectorAll('.rank__fill').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
-  const select = (address) => {
-    st.selected = address;
-    lists.querySelectorAll('.rank__row').forEach((row) => row.classList.toggle('is-selected', lower(row.dataset.address) === lower(address)));
-    drawPanel();
-  };
+  const host = h('div', { class: 'echost' });
+  host.style.height = `${figRows.length * 34 + 78}px`;
+  const axisUsd = (v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(v % 1e6 ? 1 : 0)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(0)}k` : `$${v}`);
+  const ylab = (r) => `${r.listed ? '\u2020 ' : ''}${shortAddr(r.address)}`;
+  const figure = h('figure', { class: 'figure', id: 'gr-chart', 'data-nodes': String(direct1.length), 'data-centre-listed': String(Boolean(graph.center.listed)) },
+    h('div', { class: 'figure__plot', role: 'img', 'aria-label': `Bar chart of the ${figRows.length} largest counterparties of ${st.address} by value: ${figRows.map((r) => `${shortAddr(r.address)} ${money(r.sentUsd)} in, ${money(r.receivedUsd)} out${r.listed ? ', on the sanctions list' : ''}`).join('; ')}.` }, host),
+    h('figcaption', { class: 'figure__cap' },
+      h('strong', { text: `Figure. ` }),
+      `The ${figRows.length} largest direct counterparties of ${shortAddr(st.address)}, by total value. `,
+      `They account for ${allUsd ? ((100 * topUsd) / allUsd).toFixed(1) : '0.0'}% of the value exchanged with ${direct1.length} counterparties. `,
+      '\u2020 on the sanctions list in force. Source: demo payments. Full list in the table below.'));
+  let chart = null;
+  const select = (address) => { st.selected = address; chart?.render(); drawPanel(); };
+  chart = mount(host, (t) => {
+    const grey = t.dark ? '#8a969e' : '#5f6b73';
+    const sel = lower(st.selected);
+    return {
+      animation: false,
+      grid: { left: 8, right: 24, top: 34, bottom: 34, containLabel: true },
+      legend: { top: 0, left: 0, itemWidth: 12, itemHeight: 10, itemGap: 18, icon: 'rect', textStyle: { color: t.ink, fontSize: 12, fontFamily: t.sans } },
+      tooltip: { ...tooltipBase(t), trigger: 'axis', axisPointer: { type: 'shadow', shadowStyle: { color: t.grid } },
+        formatter: (ps) => { const r = figRows[ps[0].dataIndex]; return `<div class="ect__head">${esc(r.address)}</div>${r.listed ? '<div class="ect__row"><span class="ect__k">On the sanctions list</span></div>' : ''}<div class="ect__row"><span class="ect__k">Paid to this address</span><span class="ect__v">${esc(money(r.sentUsd))}</span></div><div class="ect__row"><span class="ect__k">Paid by this address</span><span class="ect__v">${esc(money(r.receivedUsd))}</span></div><div class="ect__row"><span class="ect__k">Payments</span><span class="ect__v">${r.count}</span></div>`; } },
+      xAxis: { type: 'value', splitNumber: 4, name: 'Value (USD)', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: t.dim, fontSize: 12, fontFamily: t.sans },
+        axisLine: { show: true, lineStyle: { color: t.ink } }, axisTick: { show: true, lineStyle: { color: t.ink } },
+        splitLine: { lineStyle: { color: t.grid } }, axisLabel: { color: t.dim, fontSize: 11, formatter: axisUsd } },
+      yAxis: { type: 'category', inverse: true, data: figRows.map(ylab), triggerEvent: true,
+        axisLine: { show: true, lineStyle: { color: t.ink } }, axisTick: { show: true, alignWithLabel: true, lineStyle: { color: t.ink } },
+        axisLabel: { fontFamily: t.mono, fontSize: 11.5, formatter: (v, i) => (lower(figRows[i]?.address || '') === sel ? `{s|${v}}` : `{n|${v}}`),
+          rich: { n: { color: t.ink, fontFamily: t.mono, fontSize: 11.5 }, s: { color: t.ink, fontFamily: t.mono, fontSize: 11.5, fontWeight: 700, backgroundColor: t.sunken, padding: [2, 4] } } } },
+      series: [
+        { name: 'Paid to this address', type: 'bar', stack: 'total', barWidth: 14, data: figRows.map((r) => r.sentUsd), itemStyle: { color: seriesColour('allow') }, emphasis: { disabled: true } },
+        { name: 'Paid by this address', type: 'bar', stack: 'total', barWidth: 14, data: figRows.map((r) => r.receivedUsd), itemStyle: { color: grey }, emphasis: { disabled: true } },
+      ],
+    };
+  }, (inst) => {
+    // Anywhere in a row (bar, gap or address label) picks that counterparty, not only the bar itself.
+    const rowAt = (e) => {
+      const [x, y] = [e.offsetX, e.offsetY];
+      const g = inst.getModel().getComponent('grid', 0)?.coordinateSystem?.getRect();
+      if (!g || y < g.y || y > g.y + g.height || x > g.x + g.width) return null;
+      return figRows[Math.floor(((y - g.y) / g.height) * figRows.length)] ?? null;
+    };
+    inst.getZr().on('click', (e) => { const r = rowAt(e); if (r) select(r.address); });
+    inst.getZr().on('dblclick', (e) => { const r = rowAt(e); if (r) pivot(r.address); });
+    inst.getZr().on('mousemove', (e) => { inst.getZr().setCursorStyle(rowAt(e) ? 'pointer' : 'default'); });
+  });
+  const lists = figure;
 
   // Side panel --------------------------------------------------------------------------------
   function drawPanel() {
@@ -166,7 +180,7 @@ export function renderGraph(ctx, root) {
 
   if (graph.nodes.length) {
     drawPanel();
-    sizeBars();
+    chart.render();
   }
   fade();
   void icon;
