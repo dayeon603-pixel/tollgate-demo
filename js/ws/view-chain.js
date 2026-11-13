@@ -20,8 +20,8 @@ const STATE_CHIP = {
   idle: ['Not connected', 'neutral'], connecting: ['Connecting', 'neutral'], live: ['Live', 'ok'], paused: ['Paused', 'neutral'],
   retrying: ['Retrying', 'warn'], error: ['Cannot reach the node', 'bad'],
 };
-const etherscanTx = (hash) => `https://etherscan.io/tx/${hash}`;
-const etherscanAddr = (a) => `https://etherscan.io/address/${a}`;
+const etherscanTx = (hash) => (/^0x[0-9a-fA-F]{64}$/.test(hash) ? `https://etherscan.io/tx/${hash}` : 'https://etherscan.io/');
+const etherscanAddr = (a) => (/^0x[0-9a-fA-F]{40}$/.test(a) ? `https://etherscan.io/address/${a}` : 'https://etherscan.io/');
 const extLink = (href, text, label) => h('a', { href, target: '_blank', rel: 'noopener noreferrer', class: 'extlink', 'aria-label': label, title: label }, text);
 const isoDate = (us) => { const [m, d, y] = String(us).split('/'); return y ? `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}` : String(us); };
 /** Token amount for a table cell. Zero-value transfers (often address-poisoning spam) read "0", dust reads "<0.01". */

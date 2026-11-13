@@ -78,6 +78,12 @@ test('chain: rejects logs it does not follow or that are malformed', () => {
   assert.equal(decodeLog({ ...t, data: '0x12' }), null, 'short data');
   assert.equal(decodeLog({ ...t, removed: true }), null, 'reorged out');
   assert.equal(decodeLog({ ...t, topics: ['0xdeadbeef'] }), null, 'unknown event');
+  // A hostile node controls every field: shapes outside the JSON-RPC spec are dropped, never signed.
+  assert.equal(decodeLog({ ...t, transactionHash: '0x1234' }), null, 'short tx hash');
+  assert.equal(decodeLog({ ...t, transactionHash: `${t.transactionHash.slice(0, -1)}"` }), null, 'tx hash with a quote');
+  assert.equal(decodeLog({ ...t, blockNumber: 'latest' }), null, 'non-hex block');
+  assert.equal(decodeLog({ ...t, logIndex: `0x${'f'.repeat(17)}` }), null, 'oversized log index');
+  assert.equal(decodeLog({ ...t, topics: [...t.topics, t.topics[1], t.topics[1]] }), null, 'more than four topics');
   assert.equal(decodeLog(null), null);
 });
 

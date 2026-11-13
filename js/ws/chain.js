@@ -59,6 +59,12 @@ export const CHAIN_AGENT = 'tollgate.live-chain';
 const UNIT = 10n ** 6n;
 
 const hexToNumber = (h) => Number.parseInt(h, 16);
+// Shapes of untrusted JSON-RPC fields. A node (or anyone between the page and it) controls these strings.
+const HEX32 = /^0x[0-9a-fA-F]{64}$/;
+const QUANTITY = /^0x[0-9a-fA-F]{1,16}$/;
+/** True when a log from the node has the shape every later step assumes. */
+const wellFormedLog = (log) => log && typeof log === 'object' && QUANTITY.test(log.blockNumber) && QUANTITY.test(log.logIndex)
+  && HEX32.test(log.transactionHash) && Array.isArray(log.topics) && log.topics.length <= 4 && log.topics.every((t) => HEX32.test(t));
 
 /** ISO time to the second, "2026-11-13T14:03:12Z": the resolution of a block timestamp. No milliseconds are invented. */
 export const isoSeconds = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -85,7 +91,7 @@ export function formatUnits(raw, decimals = 6) {
 export function decodeLog(log) {
   const token = String(log?.address ?? '').toLowerCase();
   const meta = TOKENS[token];
-  if (!meta || !Array.isArray(log.topics) || !log.topics.length || log.removed) return null;
+  if (!meta || !wellFormedLog(log) || !log.topics.length || log.removed) return null;
   const base = { token, symbol: meta.symbol, block: hexToNumber(log.blockNumber), tx: log.transactionHash, logIndex: hexToNumber(log.logIndex) };
   const [t0] = log.topics;
   if (t0 === TOPICS.transfer) {

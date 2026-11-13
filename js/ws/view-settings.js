@@ -108,7 +108,7 @@ export function renderSettings(ctx, root) {
         card('About', { id: 'set-about' }, h('div', { class: 'cardbody' },
           kv([
             ['Build', BUILD_LABEL],
-            ['Stored in this browser', 'Your demo changes (a short log of actions), and these settings, in localStorage on this site only.'],
+            ['Stored in this browser', 'Your demo changes (a short log of actions), these settings and the demo network keys in localStorage, and Live chain records in IndexedDB, on this site only.'],
             ['Not stored anywhere else', 'No account, no analytics and no network request carries any of it.'],
           ]),
           h('p', { class: 'field__hint' }, h('a', { href: 'privacy.html', text: 'Privacy notice' }), '.')))))].filter(Boolean));
