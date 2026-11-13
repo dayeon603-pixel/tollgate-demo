@@ -4,6 +4,7 @@
  */
 import { dayKey, DAY_MS, startOfUtcDay } from './util.js';
 import { isOpenWork, STATUSES } from './engine.js';
+import { bucketRows, rangeByKey } from './timerange.js';
 
 export const DEFAULT_WINDOW_DAYS = 30;
 
@@ -30,11 +31,42 @@ export function dailyVolume(ws, now, days = DEFAULT_WINDOW_DAYS) {
   return rows;
 }
 
-/** Headline figures for the window. */
-export function summary(ws, now, days = DEFAULT_WINDOW_DAYS) {
-  const rows = dailyVolume(ws, now, days);
-  const total = rows.reduce((s, r) => s + r.total, 0);
-  const sum = (key) => rows.reduce((s, r) => s + r[key], 0);
+const OUTCOME_FIELDS = ['allow', 'hold', 'block'];
+
+/**
+ * Screenings per bucket for a time range (1D to 3Y), in UTC or the visitor's zone.
+ *
+ * The workspace history is seeded for HISTORY_DAYS days only (seed.js) and is never stretched: buckets
+ * that end before the first transaction come back with status 'none' ("no records"), not as zeros.
+ *
+ * Returns: the bucketRows() result plus { total, allow, hold, block } over the whole window.
+ */
+export function rangeVolume(ws, now, rangeKey, zone = 'utc') {
+  const events = [];
+  let first = null;
+  for (const tx of ws.txs) {
+    const t = Date.parse(tx.ts);
+    if (Number.isNaN(t)) continue;
+    if (first === null || t < first) first = t;
+    events.push({ t, values: { [tx.outcome.toLowerCase()]: 1 } });
+  }
+  const result = bucketRows({ rangeKey, now, zone, fields: OUTCOME_FIELDS, events, firstRecordAt: first });
+  const sum = (key) => result.rows.reduce((n, r) => n + r.values[key], 0);
+  const allow = sum('allow');
+  const hold = sum('hold');
+  const block = sum('block');
+  return { ...result, total: allow + hold + block, allow, hold, block };
+}
+
+/**
+ * Headline figures for the window. With `rangeKey` the window is that range (see rangeVolume) and
+ * `rows` are its buckets ({ start, status, values, ... }); without it, `days` daily rows as before.
+ */
+export function summary(ws, now, days = DEFAULT_WINDOW_DAYS, { rangeKey = null, zone = 'utc' } = {}) {
+  const volume = rangeKey ? rangeVolume(ws, now, rangeKey, zone) : null;
+  const rows = volume ? volume.rows : dailyVolume(ws, now, days);
+  const total = volume ? volume.total : rows.reduce((s, r) => s + r.total, 0);
+  const sum = (key) => (volume ? volume[key] : rows.reduce((s, r) => s + r[key], 0));
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0]));
   for (const alert of ws.alerts) byStatus[alert.status]++;
   const open = ws.alerts.filter(isOpenWork);
@@ -42,7 +74,7 @@ export function summary(ws, now, days = DEFAULT_WINDOW_DAYS) {
   const inForce = ws.inForce;
   const changed = ws.listHistory.at(-1);
   return {
-    days, total, allow: sum('allow'), hold: sum('hold'), block: sum('block'),
+    days, volume, total, allow: sum('allow'), hold: sum('hold'), block: sum('block'),
     openAlerts: open.length, awaitingApproval: awaitingApproval.length, byStatus,
     receipts: ws.ledger.size, segments: ws.ledger.segments.length,
     listVersion: inForce, listChangedAt: changed?.from ?? null, pendingVersion: ws.pendingVersion,

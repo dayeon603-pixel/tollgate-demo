@@ -31,6 +31,8 @@ import { renderNetwork } from './view-network.js';
 import { renderArchive } from './view-archive.js';
 import { renderProofGap } from './view-proofgap.js';
 import { ChainWatcher } from './chain.js';
+import { RecordStore } from './recordstore.js';
+import { DEFAULT_RANGES, RANGE_KEYS } from './timerange.js';
 import { chainReceiptView, renderChain } from './view-chain.js';
 import { loadDemoNetwork, NET_KEYS_STORAGE, receiveInbound, registerMember, runGatePreset } from './net-flow.js';
 
@@ -57,6 +59,8 @@ export async function initWorkspace({ openInVerifier }) {
   let listJson = null;
   let network = null;
   let chain = null;
+  // Saved Live chain records (IndexedDB, or memory when the browser blocks it). Opened once, kept across Reset demo.
+  const records = new RecordStore();
   let ready = false;
   const params = {};
   let drawerStack = [];
@@ -116,7 +120,18 @@ export async function initWorkspace({ openInVerifier }) {
     get live() { return live; },
     /** Real Ethereum mainnet watcher (chain.js), one for the whole workspace. */
     get chain() { return chain; },
+    /** The saved records store (recordstore.js). */
+    get records() { return records; },
     autoConnect: () => getSettings().chainAutoConnect,
+    /** The selected time range key (1D to 3Y) for a view, remembered in the prefs. */
+    range: (view) => (RANGE_KEYS.includes(prefs.ranges?.[view]) ? prefs.ranges[view] : DEFAULT_RANGES[view] ?? '1M'),
+    /** Remembers the range for a view (prefs, localStorage) and redraws, unless the view redraws itself. */
+    setRange(view, key, { refresh = true } = {}) {
+      if (!RANGE_KEYS.includes(key)) return;
+      prefs.ranges = { ...(prefs.ranges ?? {}), [view]: key };
+      savePrefs();
+      if (refresh) ctx.refresh();
+    },
     openChainReceipt: (record) => openDrawer({ title: `Chain receipt ${record.receiptId.replace('rcpt:', '')}`, build: () => chainReceiptView(ctx, record) }, { push: dlg.open && drawerStack.length > 0 }),
     measure,
     intent: null,
@@ -304,7 +319,7 @@ export async function initWorkspace({ openInVerifier }) {
       ws = built.ws;
       ready = true;
       // The Live chain screens real transfers against the bundled OFAC snapshot, never a demo version.
-      if (!chain) chain = new ChainWatcher({ version: ws.versions.find((v) => v.real) });
+      if (!chain) chain = new ChainWatcher({ version: ws.versions.find((v) => v.real), store: records });
       else chain.version = ws.versions.find((v) => v.real);
       live?.dispose();
       live = createLive(ctx);

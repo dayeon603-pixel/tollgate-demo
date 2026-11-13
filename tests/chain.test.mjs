@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createWorkspace } from '../js/ws/session.js';
-import { ChainWatcher, decodeLog, ENDPOINTS, formatUnits, REPLAY, rpcCall, screenTransfer, TOPICS } from '../js/ws/chain.js';
+import { ChainWatcher, decodeLog, ENDPOINTS, formatUnits, isoMillis, isoSeconds, receiptSpec, REPLAY, rpcCall, screenTransfer, storedFreeze, storedRecord, TOPICS } from '../js/ws/chain.js';
+import { MemoryBackend, RecordStore } from '../js/ws/recordstore.js';
 import { verifyText } from '../js/verifier.js';
 
 const list = JSON.parse(await readFile(new URL('../data/ofac_crypto_addresses.json', import.meta.url), 'utf8'));
@@ -182,4 +183,110 @@ test('chain: hidden tab pauses polling, showing it resumes', async () => {
   assert.equal(scheduled.length, 2, 'resumes with a new poll');
   w.stop();
   assert.equal(w.state, 'idle');
+});
+
+// ---- time precision and saved records ----
+
+const SCREENED_MS = Date.parse('2026-11-13T14:03:12.481Z');
+
+test('chain: receiptSpec signs block_time (seconds, no milliseconds) and screened_at (milliseconds)', async () => {
+  const version = await real();
+  const transfer = decodeLog(fx.logs[0]);
+  const screened = screenTransfer(version, transfer);
+  const blockTime = isoSeconds(Date.parse('2026-11-13T14:03:00Z'));
+  const spec = receiptSpec(transfer, screened, 'ethereum_mainnet', { blockTime, screenedAt: isoMillis(SCREENED_MS) });
+  assert.equal(spec.params.block_time, '2026-11-13T14:03:00Z');
+  assert.doesNotMatch(spec.params.block_time, /\.\d/, 'a block timestamp has one-second resolution: no invented milliseconds');
+  assert.equal(spec.params.screened_at, '2026-11-13T14:03:12.481Z');
+  assert.match(spec.params.screened_at, /\.\d{3}Z$/);
+  assert.equal(isoSeconds(Date.parse('2026-11-13T14:03:12.999Z')), '2026-11-13T14:03:12Z', 'seconds are floored, never rounded up');
+  assert.throws(() => receiptSpec(transfer, screened, 'ethereum_mainnet', { blockTime }), TypeError, 'no screened_at, no signature');
+  assert.throws(() => receiptSpec(transfer, screened), TypeError);
+  assert.equal(receiptSpec(transfer, screened, 'ethereum_mainnet', { screenedAt: isoMillis(SCREENED_MS) }).params.block_time, null, 'an unknown block time is null, not made up');
+});
+
+test('chain: every signed receipt carries both times, covered by the signature, and the window still verifies', async () => {
+  const version = await real();
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, now: () => SCREENED_MS });
+  await w.tick();
+  const head = Number.parseInt(fx.transfer_window[1], 16);
+  const headSeconds = Number.parseInt(fx.blocks[fx.transfer_window[1]].timestamp, 16);
+  assert.ok(w.transfers.length > 50);
+  for (const r of w.transfers) {
+    assert.equal(r.screened_at, '2026-11-13T14:03:12.481Z');
+    assert.equal(r.block_time, isoSeconds(headSeconds * 1000));
+    assert.equal(r.receipt.action.params.screened_at, r.screened_at);
+    assert.equal(r.receipt.action.params.block_time, r.block_time);
+    assert.equal(r.block, head);
+  }
+  assert.ok((await w.verify()).ok);
+  // Tamper with the decision time: the signature no longer matches.
+  const text = w.ledger.segmentText(0).replace('2026-11-13T14:03:12.481Z', '2026-11-13T14:03:12.482Z');
+  assert.notEqual((await verifyText(text)).kind, 'pass', 'screened_at is inside what the signature covers');
+});
+
+test('chain: screened_at comes from the injected clock at each decision', async () => {
+  const version = await real();
+  let t = SCREENED_MS;
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, now: () => t++ });
+  await w.tick();
+  const stamps = w.transfers.map((r) => Date.parse(r.screened_at));
+  assert.ok(stamps.every((v, i) => i === 0 || v > stamps[i - 1]), 'each decision has its own millisecond');
+});
+
+test('chain: ingest saves to the record store, with live counts, hits, freezes and coverage', async () => {
+  const version = await real();
+  const store = new RecordStore({ backend: new MemoryBackend(), now: () => SCREENED_MS });
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, now: () => SCREENED_MS, store });
+  await w.tick();
+  await store.idle();
+  const t = store.summary();
+  assert.equal(t.transfers, w.totals.transfers);
+  assert.equal(t.hits, w.totals.hits);
+  assert.equal(t.allow, w.totals.transfers - w.totals.hits);
+  assert.ok(Math.abs(t.usd - w.totals.usd) < 0.01);
+  assert.equal(t.minutesRecorded, 1);
+  assert.equal(t.records, Math.min(w.totals.transfers, 20_000));
+  assert.equal(t.freezeRows, fx.freezes.length, 'the backfilled issuer events are saved');
+  const all = await store.readAll();
+  const sample = all.records[0];
+  assert.deepEqual(Object.keys(sample).sort(), ['amount', 'block', 'block_time', 'from', 'key', 'log_index', 'outcome', 'receipt_hash', 'receipt_id', 'screened_at', 'seq', 'source', 'to', 'token', 'token_contract', 'tx'].sort());
+  assert.match(sample.screened_at, /\.481Z$/);
+  assert.doesNotMatch(sample.block_time, /\.\d/);
+  assert.equal(sample.key, `${sample.tx}:${sample.log_index}`);
+  // A second poll with no new block adds no transfers, but the minute was still recorded (a heartbeat).
+  const later = new RecordStore({ backend: new MemoryBackend(), now: () => SCREENED_MS });
+  const w2 = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, now: () => SCREENED_MS, store: later });
+  await w2.tick();
+  const n = w2.totals.transfers;
+  w2.now = () => SCREENED_MS + 5 * 60_000;
+  await w2.tick();
+  await later.idle();
+  assert.equal(later.summary().transfers, n);
+  assert.equal(later.summary().minutesRecorded, 2, 'the quiet minute was recorded');
+  // Stored shapes.
+  const hitLog = fx.replay[0];
+  const record = await w.replay();
+  await store.idle();
+  const stored = storedRecord(record);
+  assert.equal(stored.source, 'historical_replay');
+  assert.equal(stored.receipt.receipt_id, record.receipt.receipt_id);
+  assert.match(stored.list_matches[0], /SEMENOV/);
+  assert.equal(stored.log_index, decodeLog(hitLog).logIndex);
+  assert.equal(store.summary().transfers, t.transfers, 'a replay is not a live transfer');
+  assert.equal(store.summary().hits, t.hits);
+  assert.equal(store.summary().replayRows, 1);
+  assert.equal(store.summary().hitRows, t.hits + 1);
+  const f = storedFreeze(w.freezes[0], SCREENED_MS);
+  assert.equal(f.receipt, null);
+  assert.equal(f.observed_at, '2026-11-13T14:03:12.481Z');
+  assert.doesNotMatch(f.block_time, /\.\d/);
+});
+
+test('chain: a failing store never breaks polling', async () => {
+  const version = await real();
+  const bad = { ingest: () => Promise.resolve() };
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, store: bad });
+  await w.tick();
+  assert.equal(w.state, 'live');
 });

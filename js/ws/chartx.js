@@ -63,11 +63,14 @@ const NO_DECAL = { symbol: 'none' };
  *   the tooltip and table; xFmt(t, long) short on the axis, long in the tooltip; tableLabel; integerAxis;
  *   markers [{ t, label }] drawn as dashed vertical lines; emptyText.
  * Returns: { el, update(points), setMarkers(markers), resetZoom(), state() } where
- *   points = [{ t, values: { [key]: number | null } }], oldest first.
+ *   points = [{ t, values: { [key]: number | null }, gap?: 'none' | 'off', note?: string }], oldest first. A point with
+ *   `gap` is drawn as a shaded band behind the plot (not a zero bar) and its tooltip says why: gapLabels maps
+ *   'none' to "No records" and 'off' to "Not recording". `note` is an extra line in the tooltip.
  */
 export function createChart({
   id, title, series, kind = 'line', stacked = false, height = 190, yFmt = compact, valueFmt = null, xFmt = (t) => String(t),
   tableLabel = 'Time', integerAxis = false, markers = [], emptyText = 'No data yet.',
+  gapLabels = { none: 'No records', off: 'Not recording' },
 }) {
   const bars = kind === 'bars';
   const fmtVal = (v, key) => (v === null || v === undefined ? 'no data' : (valueFmt ?? yFmt)(v, key));
@@ -85,26 +88,47 @@ export function createChart({
   const hint = h('p', { class: 'sr', id: `${id}-d`, text: 'Arrow keys read the values. Plus and minus zoom, zero resets. Ctrl and the mouse wheel also zoom.' });
   frame.setAttribute('aria-describedby', `${id}-d`);
 
-  const hasData = () => data.some((p) => series.some((s) => (p.values[s.key] ?? 0) > 0));
+  const hasData = () => data.some((p) => !p.gap && series.some((s) => (p.values[s.key] ?? 0) > 0));
+  const hasGap = () => data.some((p) => p.gap);
+  /** Something to draw: values, or gaps that explain why there are none. */
+  const hasContent = () => hasData() || hasGap();
+  const stackTotal = (p) => series.filter((s) => visible[s.key]).reduce((sum, s) => sum + (p.values[s.key] ?? 0), 0);
 
   function tooltipHtml(params) {
     const list = Array.isArray(params) ? params : [params];
     if (!list.length) return '';
     const p = data[list[0].dataIndex];
     if (!p) return '';
+    if (p.gap) return `<div class="ect__head">${esc(xFmt(p.t, true))}</div><div class="ect__row"><span class="ect__sw ect__sw--gap-${esc(p.gap)}"></span><span class="ect__k">${esc(gapLabels[p.gap] ?? p.gap)}</span></div>`;
     const rows = series.filter((s) => visible[s.key]).map((s) => `<div class="ect__row"><span class="ect__sw ect__sw--${esc(s.cls)}${s.dash ? ' ect__sw--dash' : ''}"></span><span class="ect__k">${esc(s.label)}</span><span class="ect__v">${esc(fmtVal(p.values[s.key], s.key))}</span></div>`);
     const shown = series.filter((s) => visible[s.key]);
     if (stacked && shown.length > 1) {
       const total = shown.reduce((sum, s) => sum + (p.values[s.key] ?? 0), 0);
       rows.push(`<div class="ect__row ect__row--total"><span class="ect__k">Total</span><span class="ect__v">${esc(fmtVal(total, 'total'))}</span></div>`);
     }
-    return `<div class="ect__head">${esc(xFmt(p.t, true))}</div>${rows.join('')}`;
+    return `<div class="ect__head">${esc(xFmt(p.t, true))}</div>${rows.join('')}${p.note ? `<div class="ect__note">${esc(p.note)}</div>` : ''}`;
   }
 
   function build(t) {
-    const empty = !hasData();
+    const empty = !hasContent();
     emptyMsg.hidden = !empty;
     frame.dataset.empty = String(empty);
+    // Gaps are shaded bands behind the plot, one per run of consecutive gap buckets, so they never read
+    // as data. Each run is labelled once when it is wide enough to hold the words.
+    const gapRuns = [];
+    data.forEach((p, i) => {
+      const last = gapRuns.at(-1);
+      if (p.gap && last && last.kind === p.gap && last.to === i - 1) last.to = i;
+      else if (p.gap) gapRuns.push({ kind: p.gap, from: i, to: i });
+    });
+    const gapArea = gapRuns.length ? {
+      silent: true, animation: false,
+      data: gapRuns.map((r) => [{
+        xAxis: String(data[r.from].t),
+        itemStyle: r.kind === 'none' ? { color: t.lineStrong, opacity: 0.12 } : { color: t.faint, opacity: 0.14, decal: HATCH },
+        label: { show: r.to - r.from >= 2, position: 'insideTop', color: t.faint, fontSize: 11, fontFamily: t.sans, formatter: gapLabels[r.kind] ?? r.kind },
+      }, { xAxis: String(data[r.to].t) }]),
+    } : undefined;
     const cats = data.map((p) => String(p.t));
     const markLine = !empty && markerList.length ? {
       silent: true, symbol: 'none', animation: false,
@@ -121,10 +145,10 @@ export function createChart({
       xAxis: categoryAxis(t, cats, (v) => xFmt(Number(v)), { show: !empty, boundaryGap: bars }),
       yAxis: valueAxis(t, (v) => yFmt(v), { show: !empty, minInterval: integerAxis ? 1 : 0 }),
       dataZoom: [{ type: 'inside', ...zoom, zoomOnMouseWheel: 'ctrl', moveOnMouseWheel: false, moveOnMouseMove: zoom.start > 0.01 || zoom.end < 99.99, preventDefaultMouseMove: false, filterMode: 'none', minValueSpan: MIN_POINTS_IN_VIEW - 1 }],
-      series: empty ? [] : series.map((s, k) => {
+      series: empty ? [] : [...series.map((s, k) => {
         const colour = seriesColour(s.cls);
         const values = data.map((p) => p.values[s.key] ?? (bars ? 0 : null));
-        const common = { id: s.key, name: s.label, stack: stacked ? 'total' : undefined, data: values, markLine: k === 0 ? markLine : undefined };
+        const common = { id: s.key, name: s.label, stack: stacked ? 'total' : undefined, data: values, markLine: k === 0 ? markLine : undefined, markArea: k === 0 ? gapArea : undefined };
         if (bars) {
           return { ...common, type: 'bar', barMaxWidth: 26, barCategoryGap: '30%', barGap: '10%',
             itemStyle: { color: colour, borderRadius: stacked && k < series.length - 1 ? 0 : [1.5, 1.5, 0, 0], decal: s.pattern ? HATCH : NO_DECAL },
@@ -134,7 +158,7 @@ export function createChart({
           lineStyle: { width: 1.5, color: colour, type: s.dash ? [5, 3] : 'solid' }, itemStyle: { color: colour, borderColor: t.surface, borderWidth: 1.5, decal: NO_DECAL },
           areaStyle: kind === 'area' ? { color: colour, opacity: stacked ? 0.28 : 0.14, decal: NO_DECAL } : undefined,
           emphasis: { disabled: true } };
-      }),
+      })],
     };
   }
 
@@ -201,7 +225,8 @@ export function createChart({
     while (host2.firstChild) host2.firstChild.remove();
     if (!data.length) { host2.append(h('p', { class: 'card__note', text: emptyText })); return; }
     host2.append(h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, tableLabel), series.map((s) => h('th', { scope: 'col', class: 'num' }, s.label)))),
-      h('tbody', {}, data.slice(-TABLE_ROWS).reverse().map((p) => h('tr', {}, h('td', {}, xFmt(p.t, true)), series.map((s) => h('td', { class: 'num' }, fmtVal(p.values[s.key], s.key))))))));
+      h('tbody', {}, data.slice(-TABLE_ROWS).reverse().map((p) => h('tr', {}, h('td', {}, xFmt(p.t, true)),
+        p.gap ? h('td', { class: 'num', colspan: series.length }, gapLabels[p.gap] ?? p.gap) : series.map((s) => h('td', { class: 'num' }, fmtVal(p.values[s.key], s.key))))))));
   }
 
   const el = h('div', { class: 'tchartbox' }, frame, hint, h('div', { class: 'tchartbox__bar' }, legendEl, resetBtn), table);
@@ -210,7 +235,7 @@ export function createChart({
     /** Replaces the data. Keeps the zoom and the series switches. */
     update(points) {
       data = points;
-      const empty = !hasData();
+      const empty = !hasContent();
       emptyMsg.hidden = !empty;
       frame.dataset.empty = String(empty);
       chart.render();

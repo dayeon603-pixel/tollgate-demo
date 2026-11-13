@@ -1,5 +1,5 @@
 /** Alert queue and case view. Every action here goes through the engine and ends up as a signed receipt. */
-import { append, card, clear, copyButton, dataTable, empty, field, h, icon, KIND_LABELS, kv, money, mono, pager, segmented, select, shortAddr, stamp, statusChip } from './dom.js';
+import { append, card, clear, copyButton, dataTable, empty, field, h, icon, KIND_LABELS, kv, money, mono, pager, segmented, select, shortAddr, stamp, stampPrecise, statusChip } from './dom.js';
 import { pageSize } from './settings.js';
 import { zoneName } from './dom.js';
 import { actorName, ACTION_LABELS } from './describe.js';
@@ -166,7 +166,7 @@ export function caseView(ctx, alertId) {
     ['Kind', KIND_LABELS[alert.kind] + (alert.rule ? ` (${alert.rule.replace('_', ' ')})` : '')],
     ['Priority', alert.priority],
     ['Owner', alert.assignee ? actorName(ws, alert.assignee) : 'Unassigned'],
-    ['Opened', `${stamp(alert.createdAt)} ${zoneName()}`],
+    ['Opened', `${stampPrecise(alert.createdAt)} ${zoneName()}`],
     ['Address', h('span', { class: 'field__text' }, mono(alert.address), copyButton(alert.address, 'address'))],
     alert.txIds.length ? ['Amount', money(alert.amountUsd) + (alert.txIds.length > 1 ? ` across ${alert.txIds.length} payments` : '')] : null,
     ['List when raised', ws.version(alert.versionId).label],
@@ -218,7 +218,7 @@ export function caseView(ctx, alertId) {
     if (fourEyes) actions.append(why('Four-eyes: clearing needs a second person. You propose, a different approver or admin approves.'));
     if (alert.pending) {
       actions.append(h('div', { class: 'pending', role: 'group', 'aria-label': 'Clearance awaiting approval' },
-        h('p', {}, h('strong', { text: `${actorName(ws, alert.pending.by)} proposed clearing this alert` }), ` on ${stamp(alert.pending.at)} ${zoneName()}.`),
+        h('p', {}, h('strong', { text: `${actorName(ws, alert.pending.by)} proposed clearing this alert` }), ` on ${stampPrecise(alert.pending.at)} ${zoneName()}.`),
         h('p', { class: 'pending__note', text: `"${alert.pending.note}"` }),
         h('div', { class: 'btnrow' }, button('approve_clear', 'Approve clearance', { primary: true }), button('reject_clear', 'Reject')),
         can.approve_clear ? why(can.approve_clear) : null));
@@ -241,7 +241,7 @@ export function caseView(ctx, alertId) {
     h('div', {}, h('p', { class: 'timeline__head' }, h('strong', { text: ACTION_LABELS[t.action] ?? t.action }), ` by ${actorName(ws, t.actor)}`, t.from && t.from !== t.to ? ` (${t.from.replace('_', ' ')} to ${t.to.replace('_', ' ')})` : ''),
       t.assignee !== undefined ? h('p', { class: 'timeline__note', text: `Owner: ${t.assignee ? actorName(ws, t.assignee) : 'none'}` }) : null,
       t.note ? h('p', { class: 'timeline__note', text: t.note }) : null,
-      h('p', { class: 'timeline__meta' }, `${stamp(t.ts)} ${zoneName()} · `, h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(t.receiptId) } }, `receipt ${t.receiptId.replace('rcpt:', '')}`)))))));
+      h('p', { class: 'timeline__meta' }, `${stampPrecise(t.ts)} ${zoneName()} · `, h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(t.receiptId) } }, `receipt ${t.receiptId.replace('rcpt:', '')}`)))))));
 
   body.append(h('div', { class: 'btnrow' }, h('button', { type: 'button', class: 'btn', id: 'case-evidence', on: { click: () => ctx.go('evidence', { case: alert.id, auto: true }) } }, icon('file'), 'Evidence for this case')));
   void append;

@@ -121,3 +121,20 @@ test('export: round trips and refuses files that are not exports', () => {
   assert.throws(() => parseExport('{"kind":"other"}'), /not a Tollgate/);
   assert.throws(() => parseExport(JSON.stringify({ kind: 'tollgate-demo-export', state: { anchor: 1 } })), /not usable/);
 });
+
+test('format: precise stamps show the milliseconds, block stamps stop at the second, both follow the zone', () => {
+  const t = Date.parse('2026-11-13T14:03:12.481Z');
+  const utc = { ...S.DEFAULTS, timeZone: 'utc' };
+  assert.equal(S.formatStampPrecise(t, utc), '2026-11-13 14:03:12.481');
+  assert.equal(S.formatStampPrecise('2026-11-13T14:03:12.007Z', utc), '2026-11-13 14:03:12.007', 'milliseconds are zero-padded');
+  assert.equal(S.formatStampPrecise('2026-11-13T14:03:12Z', utc), '2026-11-13 14:03:12.000');
+  assert.equal(S.formatStampSeconds('2026-11-13T14:03:12Z', utc), '2026-11-13 14:03:12', 'a block time is not given milliseconds');
+  assert.equal(S.formatClockPrecise(t, utc), '14:03:12.481');
+  assert.equal(S.formatStampPrecise(t, { ...utc, dateFormat: 'long' }), 'Nov 13, 2026 14:03:12.481');
+  assert.equal(S.formatStampPrecise('nope', utc), '');
+  assert.equal(S.formatStampSeconds('nope', utc), '');
+  assert.equal(S.formatClockPrecise('nope', utc), '');
+  const d = new Date(t);
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  assert.equal(S.formatStampPrecise(t, { ...utc, timeZone: 'local' }), `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`);
+});

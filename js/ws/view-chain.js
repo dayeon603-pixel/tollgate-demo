@@ -3,14 +3,19 @@
  * screened against the bundled OFAC snapshot and signed in this browser. The data comes from
  * ChainWatcher (chain.js); this file only draws it.
  */
-import { card, clear, copyButton, h, kv, money, mono, outcomeTag, shortAddr, shortHash, zoneName } from './dom.js';
-import { formatClock, formatNumber, formatStamp } from './settings.js';
+import { card, clear, copyButton, download, h, kv, money, mono, outcomeTag, shortAddr, shortHash, zoneName } from './dom.js';
+import { formatClock, formatClockPrecise, formatDate, formatNumber, formatStamp, formatStampPrecise, formatStampSeconds, getSettings } from './settings.js';
 import { chip } from './moat-ui.js';
 import { createChart, compact } from './chartx.js';
-import { CHAIN_MAX_RECEIPTS, ENDPOINTS, REPLAY } from './chain.js';
+import { CHAIN_MAX_RECEIPTS, ENDPOINTS, isoSeconds, REPLAY } from './chain.js';
+import { bucketLabel, bucketRows, rangeByKey, recordsNote, toChartPoints, zoneOf } from './timerange.js';
+import { gapKey, rangeControl, sentence } from './range-ui.js';
 
 const TABLE_ROWS = 50;
 const REDRAW_MS = 800;
+const CLEAR_CONFIRM_MS = 6000;
+const RECORDING_LINE = 'Recording runs while this page is open. The self-hosted kit records around the clock.';
+const STORAGE_TEXT = { indexeddb: 'Saved in this browser (IndexedDB)', memory: 'Memory only, lost when this page closes or reloads', loading: 'Opening saved records' };
 const STATE_CHIP = {
   idle: ['Not connected', 'neutral'], connecting: ['Connecting', 'neutral'], live: ['Live', 'ok'], paused: ['Paused', 'neutral'],
   retrying: ['Retrying', 'warn'], error: ['Cannot reach the node', 'bad'],
@@ -85,7 +90,8 @@ export function chainReceiptView(ctx, record) {
       ['From', h('span', { class: 'field__text' }, mono(record.from), copyButton(record.from, 'sender'))],
       ['To', h('span', { class: 'field__text' }, mono(record.to), copyButton(record.to, 'receiver'))],
       ['Block', formatNumber(record.block)],
-      ['Block time', `${formatStamp(new Date(record.t).toISOString())} ${zoneName()}`],
+      ['Block time', record.block_time ? `${formatStampSeconds(record.block_time)} ${zoneName()}` : 'unknown'],
+      ['Screened at', `${formatStampPrecise(record.screened_at)} ${zoneName()}`],
       ['Transaction', h('span', { class: 'field__text' }, mono(shortHash(record.tx, 12, 8)), extLink(etherscanTx(record.tx), 'Etherscan', 'Open the transaction on Etherscan'))],
       ['List', chainLabel(ctx).split('· ').at(-1)],
       matches.length ? ['On the list', matches.join('; ')] : null,
@@ -104,7 +110,7 @@ export function chainReceiptView(ctx, record) {
 
 function transferTable(ctx, rows) {
   const tbody = h('tbody', {}, rows.map((r) => h('tr', { class: `grid__row${r.outcome === 'BLOCK' ? ' tape__row--block' : ''}`, 'data-outcome': r.outcome, 'data-source': r.source },
-    h('td', { 'data-label': 'Time (UTC)', class: 'tnum' }, formatClock(r.t), r.source === 'historical_replay' ? h('span', { class: 'chip chip--warn chainhist', text: `Historical, ${formatStamp(new Date(r.t).toISOString()).slice(0, 10)}` }) : null),
+    h('td', { 'data-label': 'Time (UTC)', class: 'tnum' }, formatClock(r.t), h('span', { class: 'tape__ms', title: 'Screened at (this page\'s clock)', text: `screened ${formatClockPrecise(r.screened_at)}` }), r.source === 'historical_replay' ? h('span', { class: 'chip chip--warn chainhist', text: `Historical, ${formatStamp(new Date(r.t).toISOString()).slice(0, 10)}` }) : null),
     h('td', { 'data-label': 'Token', text: r.symbol }),
     h('td', { 'data-label': 'Amount', class: 'num', text: amountText(r) }),
     h('td', { 'data-label': 'From', class: 'mono', title: r.from, text: shortAddr(r.from) }),
@@ -128,7 +134,7 @@ function freezeTable(ctx, w) {
     h('caption', { class: 'sr', text: 'Issuer freeze events, newest first' }),
     h('thead', {}, h('tr', {}, [`Time (${zoneName()})`, 'Issuer', 'Event', 'Address', `On OFAC list (${date})`, 'Etherscan'].map((t) => h('th', { scope: 'col' }, t)))),
     h('tbody', {}, w.freezes.slice(0, TABLE_ROWS).map((f) => h('tr', { class: 'grid__row', 'data-listed': String(f.listed) },
-      h('td', { 'data-label': 'Time (UTC)', class: 'tnum', text: f.t ? formatStamp(new Date(f.t).toISOString()) : `block ${formatNumber(f.block)}` }),
+      h('td', { 'data-label': 'Time (UTC)', class: 'tnum', text: f.t ? formatStampSeconds(f.t) : `block ${formatNumber(f.block)}` }),
       h('td', { 'data-label': 'Issuer', text: `${f.symbol === 'USDC' ? 'Circle' : 'Tether'} (${f.symbol})` }),
       h('td', { 'data-label': 'Event', text: f.kind === 'freeze' ? 'Frozen' : 'Unfrozen' }),
       h('td', { 'data-label': 'Address' }, h('a', { href: etherscanAddr(f.address), target: '_blank', rel: 'noopener noreferrer', class: 'mono', title: f.address }, shortAddr(f.address))),
@@ -145,6 +151,99 @@ function kpis(w) {
     kpi('Hits on the list', formatNumber(t.hits), `${formatNumber(t.hits)} hit${t.hits === 1 ? '' : 's'} in ${formatNumber(t.transfers)} transfers`, 'ch-k-hits'),
     kpi('Value screened', `$${compact(t.usd)}`, 'USD, 1 token = 1 USD', 'ch-k-usd'),
     kpi('Issuer freezes', formatNumber(w.freezes.filter((f) => f.kind === 'freeze').length), w.backfill.state === 'done' ? `since block ${formatNumber(w.backfill.from)}` : 'live', 'ch-k-freezes'));
+}
+
+/**
+ * History card: transfers per bucket over the selected range (1D to 3Y), from the saved records. A bucket
+ * before the first record reads "No records"; a bucket after it in which the page was not recording reads
+ * "Not recording"; a recorded bucket with no transfers is a real zero. Redraws itself when the range changes.
+ */
+function historyCard(ctx) {
+  const store = ctx.records;
+  let rangeKey = ctx.range('chain');
+  const chart = createChart({
+    id: 'c-chain-history', integerAxis: true, kind: 'bars', stacked: true, height: 190,
+    title: 'USDC and USDT transfers screened per time bucket, from the records this browser saved: clear and on the list',
+    series: [{ key: 'clear', label: 'Clear', cls: 'allow' }, { key: 'hit', label: 'On the list', cls: 'block', pattern: true }],
+    xFmt: (t, long) => bucketLabel(rangeKey, t, long, getSettings()), tableLabel: 'Time bucket', valueFmt: (v) => formatNumber(v ?? 0),
+    emptyText: 'No saved records yet. Connect, and the page starts recording.',
+  });
+  const bar = h('div', { class: 'rangebar', id: 'ch-range-bar' });
+  const keyHost = h('div', { id: 'ch-range-key' });
+  const sub = h('p', { class: 'card__sub', id: 'ch-history-sub' });
+  const el = card('History', { id: 'ch-history' }, bar, chart.el, keyHost);
+  el.querySelector('.card__head').append(sub);
+  const draw = () => {
+    const s = getSettings();
+    const range = rangeByKey(rangeKey);
+    const { firstRecordAt, buckets } = store.series();
+    const result = bucketRows({ rangeKey, now: ctx.now(), zone: zoneOf(s), fields: ['clear', 'hit', 'usd'], pre: buckets, firstRecordAt, coverage: true });
+    const note = store.state === 'loading' ? 'Opening saved records.' : recordsNote(result, s);
+    sub.textContent = `${sentence(range.name)}, ${s.timeZone === 'local' ? 'local time' : 'UTC'}, per ${range.per}`;
+    clear(bar).append(rangeControl({ id: 'ch-range', value: rangeKey, onPick: (key) => { rangeKey = key; ctx.setRange('chain', key, { refresh: false }); draw(); } }),
+      ...(note ? [h('p', { class: 'rangenote', id: 'ch-range-note', text: result.hasNone && result.firstRecordAt !== null ? `${note} Earlier buckets have no records.` : note })] : []));
+    const recordedNote = (r) => `Recorded ${formatNumber(Math.min(r.coverageMinutes, Math.max(r.spanMinutes, 1)))} of ${formatNumber(Math.max(r.spanMinutes, 1))} min · $${compact(r.values.usd)} screened`;
+    chart.update(toChartPoints(result, { note: recordedNote }));
+    clear(keyHost).append(gapKey({ none: result.hasNone, off: result.hasOff }) ?? '');
+  };
+  return { el, draw };
+}
+
+/** Saved records card: totals, storage state, Export CSV and Clear (confirmed in the page, never with a dialog). */
+function savedCard(ctx) {
+  const store = ctx.records;
+  const notice = h('p', { class: 'savedrec__notice', id: 'ch-saved-notice', role: 'status', hidden: true });
+  const facts = h('div', { id: 'ch-saved-facts' });
+  const out = h('div', { id: 'ch-saved-out', role: 'status', 'aria-live': 'polite' });
+  const actions = h('div', { class: 'btnrow', id: 'ch-saved-actions' });
+  let armed = false;
+  let timer = null;
+  const disarm = () => { armed = false; clearTimeout(timer); draw(); };
+  const exportBtn = h('button', { type: 'button', class: 'btn', id: 'ch-saved-export', on: { click: async () => {
+    exportBtn.disabled = true;
+    try {
+      const csv = await store.exportCsv();
+      const stamp = isoSeconds(Date.now()).replace(/[-:]/g, '');
+      download(`tollgate-saved-records-${stamp}.csv`, csv, 'text/csv;charset=utf-8');
+      clear(out).append(h('p', { class: 'field__hint', text: `Exported ${formatNumber(csv.split('\r\n').length - 2)} rows. Times are UTC: block_time to the second, screened_at to the millisecond.` }));
+    } catch (error) {
+      clear(out).append(h('p', { class: 'field__hint', text: `Could not read the saved records (${error?.message ?? 'error'}).` }));
+    } finally { exportBtn.disabled = false; }
+  } } }, 'Export CSV');
+  function draw() {
+    const t = store.summary();
+    notice.hidden = !t.notice;
+    notice.textContent = t.notice;
+    notice.dataset.level = t.noticeKind === 'quota' || t.noticeKind === 'error' ? 'warn' : 'info';
+    const first = t.firstRecordAt;
+    clear(facts).append(kv([
+      ['First record', h('span', { id: 'ch-saved-first', text: first === null ? (store.state === 'loading' ? 'Opening saved records' : 'Nothing recorded yet') : `${formatStamp(first)} ${zoneName()}` })],
+      ['Transfers screened', h('span', { id: 'ch-saved-transfers', text: `${formatNumber(t.transfers)} in ${formatNumber(t.blocks)} blocks, ${formatNumber(t.hits)} hit${t.hits === 1 ? '' : 's'}, $${compact(t.usd)}` })],
+      ['Minutes recorded', h('span', { id: 'ch-saved-minutes', text: formatNumber(t.minutesRecorded) })],
+      ['Full records kept', h('span', { id: 'ch-saved-records', text: `${formatNumber(t.records)} of the latest ${formatNumber(t.maxRecords)}` })],
+      ['Kept indefinitely', h('span', { id: 'ch-saved-forever', text: `${formatNumber(t.hitRows)} hit${t.hitRows === 1 ? '' : 's'} with receipts, ${formatNumber(t.freezeRows)} issuer events${t.replayRows ? `, ${formatNumber(t.replayRows)} replayed (not counted as live)` : ''}` })],
+      ['Storage', h('span', { id: 'ch-saved-storage', 'data-state': store.state, text: STORAGE_TEXT[store.state] ?? store.state })],
+    ]));
+    const eraseBtn = h('button', { type: 'button', class: 'btn', id: 'ch-saved-clear', on: { click: () => {
+      armed = true;
+      clearTimeout(timer);
+      timer = setTimeout(disarm, CLEAR_CONFIRM_MS);
+      draw();
+      document.getElementById('ch-saved-confirm')?.focus();
+    } } }, 'Clear saved records');
+    const confirmBtn = h('button', { type: 'button', class: 'btn btn--primary', id: 'ch-saved-confirm', on: { click: async () => {
+      armed = false;
+      clearTimeout(timer);
+      const ok = await store.clear();
+      clear(out).append(h('p', { class: 'field__hint', text: ok ? 'Saved records erased.' : 'Could not erase everything in browser storage.' }));
+      draw();
+    } } }, 'Confirm: erase all saved records');
+    const cancelBtn = h('button', { type: 'button', class: 'btn', id: 'ch-saved-cancel', on: { click: disarm } }, 'Cancel');
+    clear(actions).append(exportBtn, ...(armed ? [confirmBtn, cancelBtn] : [eraseBtn]));
+  }
+  const el = card('Saved records', { id: 'ch-saved', sub: 'In this browser' }, h('div', { class: 'savedrec' }, notice, facts, actions, out),
+    h('p', { class: 'field__hint chainnote chainnote--rec', id: 'ch-record-line', text: RECORDING_LINE }));
+  return { el, draw };
 }
 
 export function renderChain(ctx, root) {
@@ -183,7 +282,11 @@ export function renderChain(ctx, root) {
     } finally { replayBtn.disabled = false; }
   } } }, 'Replay a known sanctioned address (historical)');
 
+  const history = historyCard(ctx);
+  const saved = savedCard(ctx);
   const draw = () => {
+    history.draw();
+    saved.draw();
     clear(head).append(statusChip(w), h('span', { class: 'chainhead__label', text: chainLabel(ctx) }));
     head.title = w.message;
     source.textContent = `Your browser reads public blockchain data from ${w.endpoint.host}${w.endpointIndex ? ` (fallback for ${ENDPOINTS[0].host})` : ''}.${w.state === 'retrying' || w.state === 'error' ? ` ${w.message}.` : ''}`;
@@ -207,11 +310,15 @@ export function renderChain(ctx, root) {
     h('div', { class: 'cols cols--charts' },
       card('Transfers screened per block', { id: 'ch-c1', sub: 'USDC and USDT' }, charts.transfers.el),
       card('Value screened per block', { id: 'ch-c2', sub: 'USD' }, charts.usd.el)),
+    history.el,
     (transfersCard = card('Transfers', { id: 'ch-transfers', sub: 'Newest first' }, tableHost)),
     card('Issuer freezes', { id: 'ch-freeze', sub: 'USDC Blacklisted and USDT AddedBlackList events' }, freezeHost,
-      h('p', { class: 'field__hint chainnote', text: 'A freeze has a block time. Public data does not show when the issuer acted on a listing; see Proof gap.' })));
+      h('p', { class: 'field__hint chainnote', text: 'A freeze has a block time. Public data does not show when the issuer acted on a listing; see Proof gap.' })),
+    saved.el);
   draw();
-  follow(w, root, draw);
+  // Anchored on `head` (replaced with the view), so a left-behind view stops redrawing.
+  follow(w, head, draw);
+  const offStore = ctx.records.subscribe(() => { if (!head.isConnected) offStore(); else { history.draw(); saved.draw(); } });
 }
 
 /** Dashboard hero: the live chain in one card. */

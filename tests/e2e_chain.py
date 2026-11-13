@@ -122,6 +122,102 @@ def fixture_checks(browser: Browser, base: str, shots: Path) -> None:
     expect(not foreign, f"fixture: only the site and the two RPC nodes ({foreign[:3]})")
 
 
+RANGE_KEYS = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y"]
+MS_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+SEC_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+
+def history_checks(browser: Browser, base: str, shots: Path) -> None:
+    """History ranges, saved records, reload persistence and CSV export on the Live chain view."""
+    errors: list[str] = []
+    foreign: list[str] = []
+    for theme in ("light", "dark"):
+        for label, size in SIZES.items():
+            page = open_app(browser, base, size, theme, errors, foreign)
+            page.wait_for_selector("#ch-state[data-state=live]", timeout=20000)
+            page.wait_for_function("() => document.querySelectorAll('#ch-table tbody tr').length > 0", timeout=20000)
+            page.wait_for_function("() => /Saved in this browser/.test(document.querySelector('#ch-saved-storage')?.textContent || '')", timeout=10000)
+            expect("Recording runs while this page is open. The self-hosted kit records around the clock." in page.inner_text("#ch-record-line"), f"history {theme} {label}: the recording line is shown")
+            expect(page.get_attribute("#ch-range-1D", "aria-checked") == "true", f"history {theme} {label}: 1D is the default")
+            for key in RANGE_KEYS:
+                page.click(f"#ch-range-{key}")
+                page.wait_for_function("k => document.querySelector(`#ch-range-${k}`)?.getAttribute('aria-checked') === 'true'", arg=key)
+                over = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
+                expect(over <= 0, f"history {theme} {label} {key}: no horizontal scroll ({over}px)")
+                if key in ("1D", "1M", "3Y"):
+                    page.wait_for_timeout(500)
+                    page.locator("#ch-history").screenshot(path=str(shots / f"chain_history_{key}_{theme}_{label}.png"))
+            note = page.inner_text("#ch-range-note")
+            expect(note.startswith("Records start 20"), f"history {theme} {label} 3Y: note says where records start ({note!r})")
+            page.context.close()
+
+    page = open_app(browser, base, SIZES["1440"], "light", errors, foreign)
+    page.wait_for_selector("#ch-state[data-state=live]", timeout=20000)
+    page.wait_for_function("() => /Saved in this browser/.test(document.querySelector('#ch-saved-storage')?.textContent || '')", timeout=10000)
+    page.wait_for_function("n => parseInt((document.querySelector('#ch-saved-transfers')?.textContent || '0').replace(/,/g, '')) >= n", arg=HEAD_TRANSFERS, timeout=10000)
+    # Receipt detail shows full precision.
+    page.wait_for_selector("#ch-table tbody tr button.linkbtn", timeout=20000)
+    page.locator("#ch-table tbody tr button.linkbtn").first.click()
+    page.wait_for_selector("#ws-drawer[open] #chr-verify")
+    drawer = page.inner_text("#ws-drawer")
+    expect(re.search(r"Screened at\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} UTC", drawer) is not None, "drawer: screened at shows milliseconds")
+    expect(re.search(r"Block time\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC", drawer) is not None, "drawer: block time shows seconds, no invented milliseconds")
+    page.keyboard.press("Escape")
+    before = page.inner_text("#ch-saved-transfers")
+    first_before = page.inner_text("#ch-saved-first")
+    expect(first_before.startswith("20"), f"saved: first record shown ({first_before!r})")
+    # Block the RPC nodes and reload: the saved records must come back from IndexedDB with no chain data.
+    page.context.unroute_all()
+    rpc_fixture.install(page.context, "abort")
+    page.reload()
+    page.wait_for_function("() => /Saved in this browser/.test(document.querySelector('#ch-saved-storage')?.textContent || '')", timeout=10000)
+    page.wait_for_function("() => !/Nothing recorded|Opening/.test(document.querySelector('#ch-saved-first')?.textContent || 'Opening')", timeout=10000)
+    after = page.inner_text("#ch-saved-transfers")
+    expect(after.split(" in ")[0] == before.split(" in ")[0] and int(after.split(" in ")[0].replace(",", "")) >= HEAD_TRANSFERS, f"saved: records survive a reload ({before!r} then {after!r})")
+    expect(page.inner_text("#ch-saved-first") == first_before, "saved: first-record date survives a reload")
+    # CSV export.
+    with page.expect_download() as dl:
+        page.click("#ch-saved-export")
+    text = Path(dl.value.path()).read_bytes().decode("utf-8")
+    lines = text.strip().split("\r\n")
+    header = lines[0].split(",")
+    expect("screened_at" in header and "block_time" in header, "csv: has block_time and screened_at columns")
+    rows = [dict(zip(header, line.split(","))) for line in lines[1:] if "receipt_json" not in line]
+    sample = [r for r in rows if r.get("record_type") == "transfer"]
+    expect(len(sample) >= 1 and all(MS_ISO.match(r["screened_at"]) for r in sample), "csv: screened_at has milliseconds (ISO, UTC)")
+    expect(all(SEC_ISO.match(r["block_time"]) for r in sample), "csv: block_time is to the second, no milliseconds")
+    expect(len(lines) - 1 >= HEAD_TRANSFERS, f"csv: every saved record exported ({len(lines) - 1} rows)")
+    # Clear needs an in-page confirmation (no window.confirm dialog).
+    dialogs: list[str] = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    page.click("#ch-saved-clear")
+    page.wait_for_selector("#ch-saved-confirm")
+    page.click("#ch-saved-cancel")
+    expect(page.locator("#ch-saved-confirm").count() == 0 and "Nothing" not in page.inner_text("#ch-saved-first"), "clear: cancel keeps the records")
+    page.click("#ch-saved-clear")
+    page.click("#ch-saved-confirm")
+    page.wait_for_function("() => /Saved records erased/.test(document.querySelector('#ch-saved-out')?.textContent || '')", timeout=10000)
+    expect(not dialogs, "clear: confirmed in the page, no browser dialog")
+    page.context.close()
+
+    # IndexedDB blocked: the notice is visible and the page keeps recording from memory.
+    ctx = browser.new_context(viewport=SIZES["1440"])
+    ctx.add_init_script("Object.defineProperty(window, 'indexedDB', { get() { return undefined; } })")
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(f"pageerror {e}"))
+    page.goto(urljoin(base, "app.html#chain"))
+    page.wait_for_selector("#ch-state[data-state=live]", timeout=20000)
+    page.wait_for_selector("#ch-saved-notice:not([hidden])", timeout=10000)
+    expect("memory only" in page.inner_text("#ch-saved-notice").lower(), f"no IndexedDB: visible notice ({page.inner_text('#ch-saved-notice')[:60]!r})")
+    page.wait_for_function("() => parseInt((document.querySelector('#ch-saved-transfers')?.textContent || '0').replace(/,/g, '')) > 0", timeout=10000)
+    expect("Memory only" in page.inner_text("#ch-saved-storage"), "no IndexedDB: storage state says memory only")
+    page.screenshot(path=str(shots / "chain_no_indexeddb_light_1440.png"), full_page=True)
+    ctx.close()
+    real = [e for e in errors if not ABORT_NOISE.search(e)]  # the reload with the nodes blocked aborts requests on purpose
+    expect(not real, f"history: no console errors ({real[:3]})")
+    expect(not foreign, f"history: only the site and the two RPC nodes ({foreign[:3]})")
+
+
 def blocked_checks(browser: Browser, base: str, shots: Path) -> None:
     errors: list[str] = []
     foreign: list[str] = []
@@ -171,6 +267,7 @@ def main(base: str, shots: Path, live_seconds: int) -> int:
     with sync_playwright() as pw:
         b1 = rpc_fixture.patch(pw.chromium.launch(), "fixture")
         fixture_checks(b1, base, shots)
+        history_checks(b1, base, shots)
         b1.close()
         b2 = rpc_fixture.patch(pw.chromium.launch(), "abort")
         blocked_checks(b2, base, shots)

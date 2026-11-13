@@ -232,6 +232,47 @@ def main(base: str, shots: Path) -> int:
             expect(over <= 0, f"phone {route}: no horizontal scroll ({over}px over)")
             if route in ("dashboard", "alerts", "lists"):
                 page.screenshot(path=str(shots / f"{route}_phone.png"), full_page=True)
+
+        # 12. Time ranges on the dashboard: every button, at desktop and phone width.
+        ctx.close()
+        for label, size in (("1440", {"width": 1440, "height": 900}), ("390", PHONE)):
+            ctx = browser.new_context(viewport=size)
+            page = ctx.new_page()
+            page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.goto(app + "#dashboard")
+            page.wait_for_selector("#dash-range-1M")
+            expect(page.get_attribute("#dash-range-1M", "aria-checked") == "true", f"ranges {label}: 1M is the default")
+            expect(page.get_attribute("#ws-view-dashboard .seg--radio", "role") == "radiogroup", f"ranges {label}: a radiogroup")
+            expect("Screened, 30 days" in page.inner_text("#ws-view-dashboard .kpis"), f"ranges {label}: 1M keeps the 30-day tile")
+            for key, window, bars in (("1D", "24 hours", 24), ("1W", "7 days", 28), ("1M", "30 days", 30), ("3M", "3 months", 13), ("6M", "6 months", 26), ("1Y", "1 year", 12), ("3Y", "3 years", 36)):
+                page.click(f"#dash-range-{key}")
+                page.wait_for_function("k => document.querySelector(`#dash-range-${k}`)?.getAttribute('aria-checked') === 'true'", arg=key)
+                expect(f"Screened, {window}" in page.inner_text("#ws-view-dashboard .kpis"), f"ranges {label} {key}: tile says {window}")
+                page.wait_for_function("() => { const el = document.querySelector('#dash-volume .tchart__canvas'); return el && window.echarts && echarts.getInstanceByDom(el); }")
+                points = page.evaluate("() => echarts.getInstanceByDom(document.querySelector('#dash-volume .tchart__canvas')).getOption().xAxis[0].data.length")
+                expect(points == bars, f"ranges {label} {key}: {bars} buckets drawn ({points})")
+                over = page.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")
+                expect(over <= 0, f"ranges {label} {key}: no horizontal scroll ({over}px)")
+            note = page.inner_text("#dash-range-note")
+            expect(note.startswith("Records start 20") and "no records" in note.lower(), f"ranges {label} 3Y: visible note about where records start ({note!r})")
+            # Keyboard: arrow keys move the radio selection.
+            page.focus("#dash-range-3Y")
+            page.keyboard.press("ArrowLeft")
+            page.wait_for_function("() => document.querySelector('#dash-range-1Y')?.getAttribute('aria-checked') === 'true'")
+            expect(page.evaluate("() => document.activeElement.id") == "dash-range-1Y", f"ranges {label}: arrow key moves selection and focus")
+            # The choice is remembered in the prefs and survives a reload.
+            page.reload()
+            page.wait_for_selector("#dash-range-1Y")
+            expect(page.get_attribute("#dash-range-1Y", "aria-checked") == "true", f"ranges {label}: the selected range is remembered")
+            expect(json.loads(page.evaluate("() => localStorage.getItem('tollgate-demo-prefs-v1')"))["ranges"]["dashboard"] == "1Y", f"ranges {label}: stored in prefs")
+            page.click("#dash-range-3Y")
+            page.wait_for_timeout(500)
+            page.screenshot(path=str(shots / f"dashboard_3Y_{label}.png"), full_page=True)
+            page.click("#dash-range-1D")
+            page.wait_for_timeout(500)
+            page.screenshot(path=str(shots / f"dashboard_1D_{label}.png"), full_page=True)
+            ctx.close()
         browser.close()
 
     expect(not errors, f"no console errors ({errors[:3]})")

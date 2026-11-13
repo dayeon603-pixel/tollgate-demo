@@ -1,8 +1,9 @@
 /** Dashboard: volume, outcomes, open work, receipts and the list in force. All volumes are synthetic. */
-import { card, clear, h, kv, mono, money, stamp } from './dom.js';
-import { formatDate } from './settings.js';
-import { axisDate, barList, createChart } from './chartx.js';
-import { formatNumber } from './settings.js';
+import { card, clear, h, kv, mono, money, stampPrecise, zoneName } from './dom.js';
+import { formatDate, formatNumber, getSettings } from './settings.js';
+import { barList, createChart } from './chartx.js';
+import { bucketLabel, rangeByKey, recordsNote, toChartPoints, zoneOf } from './timerange.js';
+import { gapKey, rangeControl, sentence } from './range-ui.js';
 import { gateSummary, networkSummary } from './net-metrics.js';
 import { loadMoatData } from './moat-data.js';
 import { chip } from './moat-ui.js';
@@ -52,7 +53,12 @@ function compounds(ctx) {
 export function renderDashboard(ctx, root) {
   const { ws } = ctx;
   const now = ctx.now();
-  const s = summary(ws, now);
+  const rangeKey = ctx.range('dashboard');
+  const range = rangeByKey(rangeKey);
+  const settings = getSettings();
+  const s = summary(ws, now, 30, { rangeKey, zone: zoneOf(settings) });
+  // Buckets before the first record are not zeros: leave them out of the tile trends.
+  const trend = (key) => s.rows.filter((r) => r.status !== 'none').map((r) => (key === 'total' ? r.values.allow + r.values.hold + r.values.block : r.values[key]));
   clear(root);
   const markers = ws.listHistory.slice(1).map((entry) => ({ date: entry.from.slice(0, 10), label: ws.version(entry.versionId).label }));
   const versionLine = s.listVersion ? `${s.listVersion.label}${s.listVersion.real ? ' (OFAC snapshot)' : ' (demo)'}` : 'none';
@@ -61,22 +67,28 @@ export function renderDashboard(ctx, root) {
     chainHero(ctx),
     h('p', { class: 'demo-line' }, 'Below the live chain: sample payments and people. The sanctions list, signatures and receipts are real.'),
     h('dl', { class: 'kpis' },
-      kpi('Screened, 30 days', s.total, `${s.allow} allowed`, 'explorer', ctx, { values: s.rows.map((r) => r.total), cls: 'allow' }),
-      kpi('Held by policy', s.hold, pct(s.hold, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.hold), cls: 'hold' }),
-      kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx, { values: s.rows.map((r) => r.block), cls: 'block' }),
+      kpi(`Screened, ${range.window}`, s.total, `${s.allow} allowed`, 'explorer', ctx, { values: trend('total'), cls: 'allow' }),
+      kpi('Held by policy', s.hold, pct(s.hold, s.total), 'alerts', ctx, { values: trend('hold'), cls: 'hold' }),
+      kpi('Hits on the list', s.block, pct(s.block, s.total), 'alerts', ctx, { values: trend('block'), cls: 'block' }),
       kpi('Open alerts', s.openAlerts, `${s.awaitingApproval} awaiting approval`, 'alerts', ctx),
       kpi('List in force', s.listVersion ? s.listVersion.label : 'none', `${s.listVersion?.real ? 'OFAC snapshot' : 'demo version'}${s.listChangedAt ? `, since ${formatDate(s.listChangedAt)}` : ''}`, 'lists', ctx),
     ),
   );
 
   const volumeChart = createChart({
-    id: 'c-volume', integerAxis: true, title: `Screenings per day over the last 30 days: ${s.allow} allow, ${s.hold} hold, ${s.block} hit.`, kind: 'bars', stacked: true, height: 210,
+    id: 'c-volume', integerAxis: true, title: `Screenings per ${range.per} over the ${range.name}: ${s.allow} allow, ${s.hold} hold, ${s.block} hit.`, kind: 'bars', stacked: true, height: 210,
     series: [{ key: 'allow', label: 'Allow', cls: 'allow' }, { key: 'hold', label: 'Hold', cls: 'hold' }, { key: 'block', label: 'Hit', cls: 'block', pattern: true }],
-    xFmt: axisDate, tableLabel: 'Day (UTC)', valueFmt: (v) => formatNumber(v ?? 0),
+    xFmt: (t, long) => bucketLabel(rangeKey, t, long, settings), tableLabel: `${sentence(range.per)} (${zoneName()})`, valueFmt: (v) => formatNumber(v ?? 0),
     markers: markers.map((m) => ({ t: Date.parse(`${m.date}T00:00:00Z`), label: m.label })),
   });
-  volumeChart.update(s.rows.map((r) => ({ t: Date.parse(`${r.date}T00:00:00Z`), values: { allow: r.allow, hold: r.hold, block: r.block } })));
-  const volume = card('Screenings per day', { id: 'dash-volume', sub: 'Last 30 days, UTC' }, volumeChart.el);
+  volumeChart.update(toChartPoints(s.volume));
+  const note = recordsNote(s.volume, settings);
+  const volume = card(`Screenings per ${range.per}`, { id: 'dash-volume', sub: `${sentence(range.name)}, ${settings.timeZone === 'local' ? 'local time' : 'UTC'}` },
+    h('div', { class: 'rangebar' },
+      rangeControl({ id: 'dash-range', value: rangeKey, onPick: (key) => ctx.setRange('dashboard', key) }),
+      note ? h('p', { class: 'rangenote', id: 'dash-range-note', text: s.volume.hasNone && s.volume.firstRecordAt !== null ? `${note} Earlier buckets have no records.` : note }) : null),
+    volumeChart.el,
+    gapKey({ none: s.volume.hasNone, off: false }));
 
   const statusItems = [['open', 'Open'], ['in_review', 'In review'], ['escalated', 'Escalated'], ['cleared', 'Cleared'], ['confirmed', 'Confirmed']].map(([key, label]) => ({ label, value: s.byStatus[key], cls: `s-${key}` }));
   const status = card('Alerts by status', { id: 'dash-status', sub: `${ws.alerts.length} alerts in total` },
@@ -102,7 +114,7 @@ export function renderDashboard(ctx, root) {
   const activity = card('Recent activity', { id: 'dash-activity' },
     h('ul', { class: 'feed' }, recent.map((entry) => {
       const d = describe(ws, entry);
-      return h('li', {}, h('span', { class: 'feed__time tnum', text: stamp(entry.receipt.action.requested_at) }), h('span', { class: 'feed__text' }, h('strong', { text: d.actor }), ' ', d.text),
+      return h('li', {}, h('span', { class: 'feed__time tnum', text: stampPrecise(entry.receipt.action.requested_at) }), h('span', { class: 'feed__text' }, h('strong', { text: d.actor }), ' ', d.text),
         h('button', { type: 'button', class: 'linkbtn mono', on: { click: () => ctx.openReceipt(entry.receipt.receipt_id) } }, entry.receipt.receipt_id.replace('rcpt:', '')));
     })));
 

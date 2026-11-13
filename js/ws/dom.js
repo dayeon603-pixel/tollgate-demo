@@ -3,7 +3,7 @@
  * never innerHTML, because notes, labels and CSV cells are user input.
  */
 
-import { copyText, formatAddress, formatMoney, formatStamp, getSettings } from './settings.js';
+import { copyText, formatAddress, formatMoney, formatStamp, formatStampPrecise, getSettings } from './settings.js';
 
 /** Name of the time zone the tables show, for column headings and notes. */
 export const zoneName = () => (getSettings().timeZone === 'local' ? 'local time' : 'UTC');
@@ -90,6 +90,11 @@ export function money(n) {
 /** "2026-11-06 10:42" in UTC. */
 export function stamp(iso) {
   return iso ? formatStamp(iso) : '';
+}
+
+/** "2026-11-06 10:42:07.123" in the chosen zone, for the detail of a record or receipt. */
+export function stampPrecise(iso) {
+  return iso ? formatStampPrecise(iso) : '';
 }
 
 export function shortHash(hex, head = 10, tail = 6) {
@@ -204,11 +209,42 @@ export function pager({ page, size, total, onChange }) {
     h('button', { type: 'button', class: 'btn', disabled: page >= pages - 1, on: { click: () => onChange(page + 1) } }, 'Next'));
 }
 
-/** Segmented filter. options: [{ value, label, count }] */
-export function segmented({ label, options, value, onChange }) {
-  return h('div', { class: 'seg', role: 'group', 'aria-label': label },
-    options.map((o) => h('button', { type: 'button', class: 'seg__btn', 'aria-pressed': String(o.value === value), on: { click: () => onChange(o.value) } },
-      o.label, o.count !== undefined ? h('span', { class: 'seg__count', text: String(o.count) }) : null)));
+/**
+ * Segmented filter. options: [{ value, label, count }]
+ *
+ * Default: a group of toggle buttons (aria-pressed). With `radio: true` it is a radiogroup instead (one
+ * stop in the tab order, arrow keys move and select, Home and End jump), and `idPrefix` gives each button
+ * the id `${idPrefix}-${value}` so a view that redraws can put the focus back.
+ */
+export function segmented({ label, options, value, onChange, radio = false, idPrefix = null }) {
+  if (!radio) {
+    return h('div', { class: 'seg', role: 'group', 'aria-label': label },
+      options.map((o) => h('button', { type: 'button', class: 'seg__btn', 'aria-pressed': String(o.value === value), on: { click: () => onChange(o.value) } },
+        o.label, o.count !== undefined ? h('span', { class: 'seg__count', text: String(o.count) }) : null)));
+  }
+  const idOf = (v) => (idPrefix ? `${idPrefix}-${v}` : undefined);
+  const choose = (v) => {
+    onChange(v);
+    const id = idOf(v);
+    if (id) document.getElementById(id)?.focus();
+  };
+  const group = h('div', { class: 'seg seg--radio', role: 'radiogroup', 'aria-label': label },
+    options.map((o) => h('button', {
+      type: 'button', class: 'seg__btn', role: 'radio', id: idOf(o.value), 'aria-checked': String(o.value === value), tabindex: o.value === value ? 0 : -1, 'data-value': o.value,
+      on: { click: () => { if (o.value !== value) choose(o.value); } },
+    }, o.label, o.count !== undefined ? h('span', { class: 'seg__count', text: String(o.count) }) : null)));
+  group.addEventListener('keydown', (event) => {
+    const at = options.findIndex((o) => o.value === value);
+    let next = -1;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = Math.min(options.length - 1, at + 1);
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = Math.max(0, at - 1);
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = options.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    if (next !== at) choose(options[next].value);
+  });
+  return group;
 }
 
 /** Labelled form field. control is a node that already has an id. */

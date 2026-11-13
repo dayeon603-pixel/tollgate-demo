@@ -95,8 +95,8 @@ function parts(value, settings) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return settings.timeZone === 'local'
-    ? { y: d.getFullYear(), m: d.getMonth(), d: d.getDate(), hh: d.getHours(), mm: d.getMinutes(), ss: d.getSeconds() }
-    : { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds() };
+    ? { y: d.getFullYear(), m: d.getMonth(), d: d.getDate(), hh: d.getHours(), mm: d.getMinutes(), ss: d.getSeconds(), ms: d.getMilliseconds() }
+    : { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate(), hh: d.getUTCHours(), mm: d.getUTCMinutes(), ss: d.getUTCSeconds(), ms: d.getUTCMilliseconds() };
 }
 
 /** "2026-11-07" or "Nov 7, 2026" in the chosen time zone. Empty string for an invalid date. */
@@ -111,6 +111,26 @@ export function formatStamp(value, settings = current) {
   const p = parts(value, settings);
   if (!p) return '';
   return `${formatDate(value, settings)} ${pad(p.hh)}:${pad(p.mm)}`;
+}
+
+/** Date and second, "2026-11-06 10:42:07", in the chosen zone. For times with one-second resolution (block times): no milliseconds are invented. */
+export function formatStampSeconds(value, settings = current) {
+  const p = parts(value, settings);
+  if (!p) return '';
+  return `${formatDate(value, settings)} ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}`;
+}
+
+/** Date and millisecond, "2026-11-06 10:42:07.123", in the chosen zone. For times the page measured itself (decisions, receipts). */
+export function formatStampPrecise(value, settings = current) {
+  const p = parts(value, settings);
+  if (!p) return '';
+  return `${formatDate(value, settings)} ${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}.${String(p.ms).padStart(3, '0')}`;
+}
+
+/** Clock time with milliseconds, "10:42:07.123", in the chosen zone. */
+export function formatClockPrecise(value, settings = current) {
+  const p = parts(value, settings);
+  return p ? `${pad(p.hh)}:${pad(p.mm)}:${pad(p.ss)}.${String(p.ms).padStart(3, '0')}` : '';
 }
 
 /** Clock time with seconds in the chosen zone. */

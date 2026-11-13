@@ -1,7 +1,7 @@
 /** Live view: a synthetic payment stream screened through the real engine, with charts that update in place. */
 import { card, clear, h, icon, money, outcomeTag, segmented, shortAddr, svg } from './dom.js';
 import { zoneName } from './dom.js';
-import { formatClock } from './settings.js';
+import { formatClock, formatClockPrecise } from './settings.js';
 import { compact, sparkline, timeChart } from './live-chart.js';
 import { gateLabel, gateText } from './gate.js';
 import { chip, guardedButton, roleReason } from './moat-ui.js';
@@ -113,7 +113,7 @@ export function renderLive(ctx, root) {
     const kind = r.outcome === 'ALLOW' ? '' : ` tape__row--${r.outcome.toLowerCase()}${flash && !live.reducedMotion ? ' tape__row--flash' : ''}`;
     const receipt = h('button', { type: 'button', class: 'linkbtn mono', 'data-rownav': '', on: { click: () => ctx.openLive(r) } }, r.receiptId.replace('rcpt:', ''));
     return h('tr', { class: `grid__row tape__row${kind}`, 'data-outcome': r.outcome },
-      h('td', { 'data-label': 'Time (UTC)', class: 'num-l', text: hms(r.t) }), h('td', { 'data-label': 'Chain', text: CHAIN_LABEL[r.chain] }), h('td', { 'data-label': 'Asset', text: r.asset }),
+      h('td', { 'data-label': 'Time (UTC)', class: 'num-l', text: formatClockPrecise(r.t) }), h('td', { 'data-label': 'Chain', text: CHAIN_LABEL[r.chain] }), h('td', { 'data-label': 'Asset', text: r.asset }),
       h('td', { 'data-label': 'Amount', class: 'num', text: money(r.amountUsd) }),
       h('td', { 'data-label': 'From', class: 'mono', title: r.from, text: shortAddr(r.from) }), h('td', { 'data-label': 'To', class: 'mono', title: r.to, text: shortAddr(r.to) }),
       h('td', { 'data-label': 'Decision' }, outcomeTag(r.outcome)),

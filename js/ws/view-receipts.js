@@ -1,5 +1,5 @@
 /** Receipt explorer (search, filter, detail with the real verifier) and the activity log. */
-import { card, clear, copyButton, dataTable, empty, field, h, icon, kv, mono, outcomeTag, pager, select, shortAddr, shortHash, stamp } from './dom.js';
+import { card, clear, copyButton, dataTable, empty, field, h, icon, kv, mono, outcomeTag, pager, select, shortAddr, shortHash, stamp, stampPrecise } from './dom.js';
 import { pageSize } from './settings.js';
 import { zoneName } from './dom.js';
 import { actorName, describe, TYPE_GROUPS, TYPE_LABELS } from './describe.js';
@@ -112,7 +112,7 @@ export function receiptView(ctx, receiptId) {
   body.append(
     h('p', { class: 'receipt__what', text: `${d.actor}: ${d.text}` }),
     kv([
-      ['Type', TYPE_LABELS[receipt.action.type] ?? receipt.action.type], [`Time (${zoneName()})`, receipt.action.requested_at], ['Decision', receipt.verdict.decision],
+      ['Type', TYPE_LABELS[receipt.action.type] ?? receipt.action.type], [`Time (${zoneName()})`, stampPrecise(receipt.action.requested_at)], ['Decision', receipt.verdict.decision],
       ['List version', `${version.label} (${version.real ? 'OFAC snapshot' : 'demo reconstruction'}), digest ${shortHash(version.digest)}`],
       ['Segment', `${segment.id}, position ${receipt.seq} of ${segment.chain.receipts.length}`],
     ]),
