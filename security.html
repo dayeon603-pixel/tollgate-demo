@@ -59,7 +59,7 @@
         <ul class="doc__list">
           <li>Screening, signing and verifying all run in your browser. Addresses you type and files you check are not sent anywhere.</li>
           <li>Receipts you make in the demo views live in the open tab only and are gone when you close it, unless you download them. Live chain records are the exception: they are saved in this browser (IndexedDB) so the history survives a reload, until you press Clear saved records.</li>
-          <li>No cookies, no analytics, no tracking scripts. The pages load only their own files. The one exception is the workspace's Live chain, which reads public Ethereum data from ethereum-rpc.publicnode.com (fallback eth.drpc.org); the workspace's Content Security Policy allows exactly those two origins.</li>
+          <li>No cookies, no analytics, no tracking scripts. The pages load only their own files. The one exception is the workspace's Live chain, which reads public Ethereum data from ethereum-rpc.publicnode.com and checks every block against eth.drpc.org (and the other way round when it falls back); the workspace's Content Security Policy allows exactly those two origins.</li>
           <li>The site is hosted on GitHub Pages. As the host, GitHub receives standard request data such as your IP address, under its own policies.</li>
         </ul>
       </section>

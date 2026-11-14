@@ -31,6 +31,8 @@ def allowed(url: str, origin: str, page_url: str = "app.html") -> bool:
 
 def _answer(req: dict[str, Any]) -> dict[str, Any]:
     method, params, rid = req.get("method"), req.get("params") or [], req.get("id")
+    if method == "eth_blockNumber":
+        return {"jsonrpc": "2.0", "id": rid, "result": FIXTURE["transfer_window"][1]}
     if method == "eth_getBlockByNumber":
         key = FIXTURE["transfer_window"][1] if params[0] == "latest" else params[0]
         return {"jsonrpc": "2.0", "id": rid, "result": FIXTURE["blocks"].get(key)}

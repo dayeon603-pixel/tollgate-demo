@@ -142,6 +142,17 @@ function freezeTable(ctx, w) {
       h('td', { 'data-label': 'Etherscan' }, extLink(etherscanTx(f.tx), shortHash(f.tx, 6, 4), `Transaction ${f.tx} on Etherscan`)))))));
 }
 
+/** How the current window was checked against the second endpoint, for the source line. */
+function crossCheckNote(w) {
+  const c = w.check;
+  if (!c || !c.peer) return '';
+  const tail = [c.disputed ? `${formatNumber(c.disputed)} disputed block${c.disputed === 1 ? '' : 's'} dropped unsigned` : '',
+    c.singleSource ? `${formatNumber(c.singleSource)} block${c.singleSource === 1 ? '' : 's'} signed from one endpoint while ${c.peer} was unreachable` : ''].filter(Boolean).join('; ');
+  const now = { agreed: `, and checks every block against ${c.peer} before signing`, waiting: `; waiting for ${c.peer} to cross-check`,
+    disputed: `; ${c.peer} disagrees on a block, so it is held unsigned`, single: `; ${c.peer} is unreachable, so blocks are signed from one endpoint` }[c.state] ?? '';
+  return `${now}${tail ? ` (${tail})` : ''}`;
+}
+
 function kpis(w) {
   const kpi = (label, value, sub, id) => h('div', { class: 'kpi', id }, h('dt', { text: label }), h('dd', { text: value }), h('p', { class: 'kpi__sub', text: sub }));
   const t = w.totals;
@@ -289,7 +300,7 @@ export function renderChain(ctx, root) {
     saved.draw();
     clear(head).append(statusChip(w), h('span', { class: 'chainhead__label', text: chainLabel(ctx) }));
     head.title = w.message;
-    source.textContent = `Your browser reads public blockchain data from ${w.endpoint.host}${w.endpointIndex ? ` (fallback for ${ENDPOINTS[0].host})` : ''}.${w.state === 'retrying' || w.state === 'error' ? ` ${w.message}.` : ''}`;
+    source.textContent = `Your browser reads public blockchain data from ${w.endpoint.host}${w.endpointIndex ? ` (fallback for ${ENDPOINTS[0].host})` : ''}${crossCheckNote(w)}.${w.state === 'retrying' || w.state === 'error' ? ` ${w.message}.` : ''}`;
     toggle.textContent = w.running ? 'Disconnect' : 'Connect';
     clear(kpiHost).append(kpis(w));
     charts.update();

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createWorkspace } from '../js/ws/session.js';
-import { ChainWatcher, decodeLog, ENDPOINTS, formatUnits, isoMillis, isoSeconds, receiptSpec, REPLAY, rpcCall, screenTransfer, storedFreeze, storedRecord, TOPICS } from '../js/ws/chain.js';
+import { ChainWatcher, compareLogs, decodeLog, DISPUTE_LIMIT, ENDPOINTS, PEER_WAIT_POLLS, formatUnits, isoMillis, isoSeconds, receiptSpec, REPLAY, rpcCall, screenTransfer, storedFreeze, storedRecord, TOPICS } from '../js/ws/chain.js';
 import { MemoryBackend, RecordStore } from '../js/ws/recordstore.js';
 import { verifyText } from '../js/verifier.js';
 
@@ -14,11 +14,15 @@ const ANCHOR = new Date('2026-11-09T18:00:00.000Z');
 const real = async () => (await createWorkspace({ list, anchor: ANCHOR })).ws.versions.find((v) => v.real);
 
 /** A fake fetch that answers JSON-RPC from the fixture, like the public endpoints do. */
-function fixtureFetch({ fail = 0, status = 200 } = {}) {
+function fixtureFetch({ fail = 0, status = 200, tamper = null, down = null, lag = 0 } = {}) {
   let failures = fail;
   const calls = [];
-  const answer = (req) => {
+  const answer = (req, url) => {
     const p = req.params?.[0];
+    if (req.method === 'eth_blockNumber') {
+      const head = Number.parseInt(fx.transfer_window[1], 16) - (url.startsWith(ENDPOINTS[1].url) ? lag : 0);
+      return { jsonrpc: '2.0', id: req.id, result: `0x${head.toString(16)}` };
+    }
     if (req.method === 'eth_getBlockByNumber') {
       const key = req.params[0] === 'latest' ? fx.transfer_window[1] : req.params[0];
       const blk = fx.blocks[key];
@@ -29,15 +33,19 @@ function fixtureFetch({ fail = 0, status = 200 } = {}) {
       const to = Number.parseInt(p.toBlock, 16);
       const freezeOnly = Array.isArray(p.topics[0]) && !p.topics[0].includes(TOPICS.transfer);
       const pool = Number.parseInt(p.fromBlock, 16) === REPLAY.block ? fx.replay : freezeOnly ? fx.freezes : [...fx.logs, ...fx.freezes];
-      return { jsonrpc: '2.0', id: req.id, result: pool.filter((l) => { const b = Number.parseInt(l.blockNumber, 16); return b >= from && b <= to; }) };
+      const peerLag = url.startsWith(ENDPOINTS[1].url) ? lag : 0;
+      const top = Math.min(to, Number.parseInt(fx.transfer_window[1], 16) - peerLag);
+      const result = pool.filter((l) => { const b = Number.parseInt(l.blockNumber, 16); return b >= from && b <= top; });
+      return { jsonrpc: '2.0', id: req.id, result: tamper && url.startsWith(tamper.url) ? tamper.fn(result) : result };
     }
     return { jsonrpc: '2.0', id: req.id, error: { code: -32601, message: 'method not found' } };
   };
   const impl = async (url, init) => {
     calls.push(url);
     if (failures > 0) { failures--; throw new TypeError('Failed to fetch'); }
+    if (down && url.startsWith(down.url)) throw new TypeError('Failed to fetch');
     const body = JSON.parse(init.body);
-    const out = Array.isArray(body) ? body.map(answer) : answer(body);
+    const out = Array.isArray(body) ? body.map((r) => answer(r, url)) : answer(body, url);
     return { ok: status === 200, status, json: async () => out };
   };
   impl.calls = calls;
@@ -150,9 +158,11 @@ test('chain: errors back off, switch to the fallback endpoint and recover', asyn
   const second = await w.tick();
   assert.equal(second, 6000, 'backoff doubles');
   assert.equal(w.endpoint.host, ENDPOINTS[1].host, 'switched to the fallback after two failures');
+  const before = fetchImpl.calls.length;
   await w.tick();
   assert.equal(w.state, 'live');
-  assert.ok(fetchImpl.calls.at(-1).startsWith(ENDPOINTS[1].url));
+  assert.ok(fetchImpl.calls[before].startsWith(ENDPOINTS[1].url), 'the poll reads from the fallback');
+  assert.ok(fetchImpl.calls.at(-1).startsWith(ENDPOINTS[0].url), 'and cross-checks against the other endpoint');
   assert.equal(w.failures, 0);
 });
 
@@ -295,4 +305,86 @@ test('chain: a failing store never breaks polling', async () => {
   const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {}, store: bad });
   await w.tick();
   assert.equal(w.state, 'live');
+});
+
+// ---- cross-check against a second endpoint ----
+
+const HEAD = Number.parseInt(fx.transfer_window[1], 16);
+const headLogs = () => fx.logs.filter((l) => Number.parseInt(l.blockNumber, 16) === HEAD);
+
+test('chain: compareLogs agrees on identical logs and flags any changed field, extra or missing log', () => {
+  const logs = headLogs();
+  assert.equal(compareLogs(logs, structuredClone(logs), HEAD, HEAD).get(HEAD), 'agree');
+  assert.equal(compareLogs(logs, [...logs].reverse(), HEAD, HEAD).get(HEAD), 'agree', 'order does not matter');
+  const changed = structuredClone(logs); changed[3].data = `0x${'0'.repeat(63)}1`;
+  assert.equal(compareLogs(logs, changed, HEAD, HEAD).get(HEAD), 'disagree', 'amount changed');
+  const moved = structuredClone(logs); moved[0].topics[2] = `0x${'0'.repeat(24)}${'ab'.repeat(20)}`;
+  assert.equal(compareLogs(logs, moved, HEAD, HEAD).get(HEAD), 'disagree', 'recipient changed');
+  const rehashed = structuredClone(logs); rehashed[1].blockHash = `0x${'11'.repeat(32)}`;
+  assert.equal(compareLogs(logs, rehashed, HEAD, HEAD).get(HEAD), 'disagree', 'different block (reorg)');
+  assert.equal(compareLogs(logs, logs.slice(1), HEAD, HEAD).get(HEAD), 'disagree', 'a log missing');
+  const extra = { ...structuredClone(logs[0]), logIndex: '0xfff' };
+  assert.equal(compareLogs([...logs, extra], logs, HEAD, HEAD).get(HEAD), 'disagree', 'a fabricated extra log');
+  assert.equal(compareLogs([], [], HEAD, HEAD).get(HEAD), 'agree', 'an empty block agrees');
+  assert.equal(compareLogs([{ junk: 1 }, ...logs], logs, HEAD, HEAD).get(HEAD), 'agree', 'malformed logs are ignored on both sides');
+});
+
+test('chain: a fabricated transfer from one endpoint is never signed', async () => {
+  const version = await real();
+  const forged = (logs) => {
+    const f = structuredClone(logs[0]);
+    f.logIndex = '0x7ff'; f.topics[2] = `0x${'0'.repeat(24)}${REPLAY.to.slice(2)}`; // a fake payment to a listed address
+    return [...logs, f];
+  };
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch({ tamper: { url: ENDPOINTS[0].url, fn: forged } }), schedule: () => 0, cancel: () => {} });
+  for (let i = 0; i < DISPUTE_LIMIT - 1; i++) {
+    await w.tick();
+    assert.equal(w.totals.transfers, 0, `poll ${i + 1}: the disputed block is held, nothing signed`);
+    assert.equal(w.check.state, 'disputed');
+    assert.match(w.message, /disagrees/);
+  }
+  await w.tick();
+  assert.equal(w.totals.transfers, 0, 'after the limit the block is dropped, still unsigned');
+  assert.equal(w.check.disputed, 1);
+  assert.equal(w.totals.hits, 0, 'the forged hit never became a record');
+  assert.equal(w.lastBlock, HEAD, 'the feed moves on');
+});
+
+test('chain: a peer one block behind delays the head block, then signs it once both agree', async () => {
+  const version = await real();
+  const fetchImpl = fixtureFetch({ lag: 1 });
+  const w = new ChainWatcher({ version, fetchImpl, schedule: () => 0, cancel: () => {} });
+  await w.tick();
+  assert.equal(w.totals.transfers, 0, 'the peer has not seen the head block yet');
+  assert.equal(w.lastBlock, HEAD - 1);
+  const w2 = new ChainWatcher({ version, fetchImpl: fixtureFetch(), schedule: () => 0, cancel: () => {} });
+  w2.lastBlock = HEAD - 1;
+  await w2.tick();
+  assert.equal(w2.totals.transfers, headLogs().length, 'once the peer has it, every transfer is signed');
+  assert.equal(w2.check.state, 'agreed');
+});
+
+test('chain: an unreachable peer pauses signing, then falls back to one endpoint and says so', async () => {
+  const version = await real();
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch({ down: ENDPOINTS[1] }), schedule: () => 0, cancel: () => {} });
+  for (let i = 1; i < PEER_WAIT_POLLS; i++) {
+    await w.tick();
+    assert.equal(w.totals.transfers, 0);
+    assert.equal(w.check.state, 'waiting');
+    assert.equal(w.state, 'live', 'a missing peer is not an error');
+  }
+  await w.tick();
+  assert.equal(w.check.state, 'single');
+  assert.equal(w.totals.transfers, headLogs().length);
+  assert.equal(w.check.singleSource, 1);
+  assert.match(w.message, /signing from one endpoint/);
+  assert.ok((await w.verify()).ok);
+});
+
+test('chain: with one endpoint configured there is no cross-check and no waiting', async () => {
+  const version = await real();
+  const w = new ChainWatcher({ version, fetchImpl: fixtureFetch(), endpoints: [ENDPOINTS[0]], schedule: () => 0, cancel: () => {} });
+  await w.tick();
+  assert.equal(w.check.state, 'off');
+  assert.equal(w.totals.transfers, headLogs().length);
 });

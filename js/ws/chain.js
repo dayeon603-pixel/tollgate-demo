@@ -55,6 +55,17 @@ export const CHAIN_MAX_RECEIPTS = 300;
 export const RPC_TIMEOUT_MS = 10_000;
 export const BACKOFF_BASE_MS = 3_000;
 export const BACKOFF_MAX_MS = 60_000;
+/**
+ * Cross-check: every block's Transfer and freeze logs are read from a second, independent endpoint and
+ * compared before anything is signed. A block the two disagree on waits for the next poll (a node one
+ * block behind, or a reorg at the head); after DISPUTE_LIMIT polls of disagreement its logs are dropped
+ * unsigned. When the second endpoint cannot be reached, the page waits PEER_WAIT_POLLS polls and then
+ * signs from one endpoint, and counts those blocks as single-source. One dishonest node can therefore
+ * delay records or cause them to be dropped, but cannot get a fabricated transfer signed, unless the other
+ * endpoint is down at the same time.
+ */
+export const DISPUTE_LIMIT = 3;
+export const PEER_WAIT_POLLS = 2;
 export const CHAIN_AGENT = 'tollgate.live-chain';
 const UNIT = 10n ** 6n;
 
@@ -65,6 +76,38 @@ const QUANTITY = /^0x[0-9a-fA-F]{1,16}$/;
 /** True when a log from the node has the shape every later step assumes. */
 const wellFormedLog = (log) => log && typeof log === 'object' && QUANTITY.test(log.blockNumber) && QUANTITY.test(log.logIndex)
   && HEX32.test(log.transactionHash) && Array.isArray(log.topics) && log.topics.length <= 4 && log.topics.every((t) => HEX32.test(t));
+
+/** What two endpoints must agree on for one log: everything the record is built from. */
+const logFingerprint = (log) => [log.address, log.blockHash, log.data, ...(log.topics ?? [])].map((x) => String(x).toLowerCase()).join('|');
+const logKey = (log) => `${String(log.transactionHash).toLowerCase()}:${hexToNumber(log.logIndex)}`;
+
+/**
+ * Compares the logs two endpoints returned for blocks from..to, block by block, oldest first.
+ * Returns, per block: 'agree' or 'disagree'. Malformed logs are left out on both sides first, so a node
+ * cannot cause a dispute with a log the decoder would drop anyway.
+ */
+export function compareLogs(primary, peer, from, to) {
+  const byBlock = (logs) => {
+    const m = new Map();
+    for (const log of logs) {
+      if (!wellFormedLog(log)) continue;
+      const b = hexToNumber(log.blockNumber);
+      if (b < from || b > to) continue;
+      if (!m.has(b)) m.set(b, new Map());
+      m.get(b).set(logKey(log), logFingerprint(log));
+    }
+    return m;
+  };
+  const a = byBlock(Array.isArray(primary) ? primary : []);
+  const b = byBlock(Array.isArray(peer) ? peer : []);
+  const out = new Map();
+  for (let n = from; n <= to; n++) {
+    const x = a.get(n) ?? new Map();
+    const y = b.get(n) ?? new Map();
+    out.set(n, x.size === y.size && [...x].every(([k, v]) => y.get(k) === v) ? 'agree' : 'disagree');
+  }
+  return out;
+}
 
 /** ISO time to the second, "2026-11-13T14:03:12Z": the resolution of a block timestamp. No milliseconds are invented. */
 export const isoSeconds = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -254,6 +297,9 @@ export class ChainWatcher {
     this.firstBlock = null;
     this.backfill = { state: 'pending', from: null, to: null, found: 0, message: '' };
     this.replayed = [];
+    this.disputes = new Map(); // block number -> polls it has been disputed
+    this.peerMisses = 0;
+    this.check = { peer: null, state: 'pending', disputed: 0, singleSource: 0 };
   }
 
   get endpoint() { return this.endpoints[this.endpointIndex]; }
@@ -266,6 +312,53 @@ export class ChainWatcher {
   async #rpc(calls) {
     this.totals.requests++;
     return rpcCall(this.fetchImpl, this.endpoint, calls);
+  }
+
+  /** The endpoint used to cross-check the current one, or null when only one is configured. */
+  get peer() { return this.endpoints.length > 1 ? this.endpoints[(this.endpointIndex + 1) % this.endpoints.length] : null; }
+
+  /** Reads the same log range from the peer endpoint. Returns { head, logs } or null when it cannot be reached. */
+  async #peerLogs(filter) {
+    const peer = this.peer;
+    if (!peer) return null;
+    this.totals.requests++;
+    try {
+      const [head, logs] = await rpcCall(this.fetchImpl, peer, [{ method: 'eth_blockNumber', params: [] }, { method: 'eth_getLogs', params: [filter] }]);
+      if (typeof head !== 'string' || !QUANTITY.test(head) || !Array.isArray(logs)) return null;
+      return { head: hexToNumber(head), logs };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Decides which blocks of a window may be signed. Returns { upTo, drop } where upTo is the last block
+   * settled this poll (signed or dropped) and drop is the set of disputed blocks given up on.
+   */
+  #settle(logs, peer, from, head) {
+    const drop = new Set();
+    if (!peer) {
+      this.peerMisses++;
+      if (this.peer && this.peerMisses < PEER_WAIT_POLLS) { this.check.state = 'waiting'; return { upTo: from - 1, drop }; }
+      this.check.state = this.peer ? 'single' : 'off';
+      this.check.singleSource += head - from + 1;
+      return { upTo: head, drop };
+    }
+    this.peerMisses = 0;
+    const top = Math.min(head, peer.head);
+    const verdicts = compareLogs(logs, peer.logs, from, top);
+    let upTo = from - 1;
+    for (let b = from; b <= top; b++) {
+      if (verdicts.get(b) === 'agree') { this.disputes.delete(b); upTo = b; continue; }
+      const seen = (this.disputes.get(b) ?? 0) + 1;
+      if (seen < DISPUTE_LIMIT) { this.disputes.set(b, seen); break; }
+      this.disputes.delete(b);
+      drop.add(b);
+      this.check.disputed++;
+      upTo = b;
+    }
+    this.check.state = upTo < top || drop.size ? 'disputed' : 'agreed';
+    return { upTo, drop };
   }
 
   /** Starts following the chain (idempotent). */
@@ -321,19 +414,29 @@ export class ChainWatcher {
       if (from <= head) {
         const numbers = [];
         for (let b = from; b <= head; b++) numbers.push(b);
+        const filter = logFilter(from, head, [[TOPICS.transfer, ...FREEZE_TOPICS]]);
         const answers = await this.#rpc([
-          { method: 'eth_getLogs', params: [logFilter(from, head, [[TOPICS.transfer, ...FREEZE_TOPICS]])] },
+          { method: 'eth_getLogs', params: [filter] },
           ...numbers.filter((b) => b !== head).map((b) => ({ method: 'eth_getBlockByNumber', params: [`0x${b.toString(16)}`, false] })),
         ]);
         const times = new Map([[head, this.headTime]]);
         answers.slice(1).forEach((blk) => { if (blk) times.set(hexToNumber(blk.number), hexToNumber(blk.timestamp) * 1000); });
-        await this.ingest(answers[0], times, numbers);
-        this.lastBlock = head;
+        this.check.peer = this.peer?.host ?? null;
+        const { upTo, drop } = this.#settle(answers[0], await this.#peerLogs(filter), from, head);
+        if (upTo >= from) {
+          const settled = (Array.isArray(answers[0]) ? answers[0] : []).filter((log) => {
+            const b = log && typeof log.blockNumber === 'string' ? hexToNumber(log.blockNumber) : NaN;
+            return b >= from && b <= upTo && !drop.has(b);
+          });
+          await this.ingest(settled, times, numbers.filter((b) => b <= upTo));
+          this.lastBlock = upTo;
+        }
       } else {
         this.#save({ at: this.now(), cover: true }); // no new block: the page was still recording this minute
       }
       this.failures = 0;
-      this.#setState('live', `Block ${head.toLocaleString('en-US')}`);
+      const note = { waiting: `, waiting for ${this.check.peer} to cross-check`, single: `, ${this.check.peer} unreachable: signing from one endpoint`, disputed: `, ${this.check.peer} disagrees on a block: holding it` }[this.check.state] ?? '';
+      this.#setState('live', `Block ${head.toLocaleString('en-US')}${note}`);
       return POLL_MS;
     } catch (error) {
       return this.#fail(error);
