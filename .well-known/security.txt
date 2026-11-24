@@ -1,0 +1,5 @@
+Contact: mailto:dayeon603@gmail.com
+Expires: 2027-11-24T00:00:00.000Z
+Preferred-Languages: en, ko
+Canonical: https://dayeon603-pixel.github.io/tollgate-demo/.well-known/security.txt
+Policy: https://dayeon603-pixel.github.io/tollgate-demo/security.html

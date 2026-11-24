@@ -53,6 +53,7 @@
         <h2 id="s-auth">Keys and scopes</h2>
         <p>An admin creates keys in the console. A key is <code>tg_</code> followed by 43 characters and is shown once; Tollgate keeps only its SHA-256. Send it on every request:</p>
         <pre class="api">Authorization: Bearer tg_...</pre>
+        <p id="s-auth-demo"><strong>Demo keys.</strong> Keys and webhook secrets you create in the demo workspace are demo credentials: they are kept in your browser, work only against the in-browser API, and must not be reused. In a real deployment the kit creates and keeps keys on your own server; never put a Tollgate key in browser code.</p>
         <p>Each key carries scopes: <code>screen</code> for screening, <code>read</code> for receipts and usage, <code>webhooks</code> for webhook settings. The kit adds scopes for screening at a past time and for shared receipts. Give each system its own key with the fewest scopes it needs, so you can revoke one without touching the others. Creating and revoking a key are themselves signed receipts in the ledger.</p>
       </section>
 

@@ -32,10 +32,14 @@ function checks(idPrefix, values, hints, chosen) {
 
 const picked = (box) => [...box.querySelectorAll('input[type=checkbox]:checked')].map((i) => i.value);
 
+/** Said beside every key or secret the demo shows: it is a demo credential held by this browser. */
+export const DEMO_SECRET_NOTE = 'Demo only: it works only against this in-browser demo and is kept in this browser. Do not reuse it anywhere. In a real deployment keys are created and kept on your own server, never in a web page.';
+
 function secretBanner(title, secret, detail) {
   return h('div', { class: 'banner', 'data-state': 'caveat', role: 'status', id: 'in-secret' },
     h('span', { class: 'banner__lead', text: title }),
-    h('span', { class: 'banner__detail' }, mono(secret), ' ', copyButton(secret, 'secret'), h('span', { text: ` ${detail}` })));
+    h('span', { class: 'banner__detail' }, mono(secret), ' ', copyButton(secret, 'secret'), h('span', { text: ` ${detail}` }),
+      h('span', { class: 'demo-line', id: 'in-secret-demo', text: ` ${DEMO_SECRET_NOTE}` })));
 }
 
 function keysCard(ctx) {
@@ -230,7 +234,7 @@ export function renderIntegrations(ctx, root) {
   const deliveries = h('div', { id: 'in-deliveries-host' });
   root.append(
     h('div', { class: 'banner', 'data-state': 'caveat', role: 'note' }, h('span', { class: 'banner__lead', text: 'In-browser API' }),
-      h('span', { class: 'banner__detail', text: 'Keys, webhooks and usage here are real code running on this demo workspace, saved in this browser only. The screening list is the bundled OFAC snapshot; the seeded payments are synthetic. Nothing is sent to a server.' })),
+      h('span', { class: 'banner__detail', text: 'Keys, webhooks and usage here are real code running on this demo workspace, saved in this browser only. Keys and webhook secrets made here are demo credentials: they work only in this page and must not be reused. The screening list is the bundled OFAC snapshot; the seeded payments are synthetic. Nothing is sent to a server.' })),
     keysCard(ctx), consoleCard(ctx), webhooksCard(ctx, deliveries), usageCard(ctx));
   if (st.hookOpen) drawDeliveries(ctx, deliveries);
 }
