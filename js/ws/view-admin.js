@@ -99,37 +99,44 @@ export function renderApi(ctx, root) {
   clear(root);
   const sample = [...ws.ledger.entries].reverse().find((e) => e.receipt.action.type === 'stablecoin_payment_screen' && e.receipt.action.params.outcome === 'BLOCK') ?? ws.ledger.entries.at(-1);
   const request = `POST /v1/screen
+Authorization: Bearer tg_...
+Idempotency-Key: withdrawal-1001
 Content-Type: application/json
 
 {
-  "address": "0x0123456789abcdef0123456789abcdef01234567",
+  "chain": "ETH",
+  "to_address": "0x0123456789abcdef0123456789abcdef01234567",
+  "from_address": "0x1111111111111111111111111111111111111111",
   "amount_usd": 1500,
   "originator_info_present": false,
-  "tx_hash": "0x9f...",
-  "reference": "your-payment-id-123"
+  "reference": "withdrawal-1001"
 }`;
   const response = `{
+  "decision": "DENY",
   "outcome": "HOLD",
-  "policy_rule": "blank_originator",
-  "list_version": "SDN-OFAC-${ws.inForce.digest.slice(0, 12)}",
-  "alert_id": "AL-0001",
+  "reasons": ["outcome=HOLD", "rulebook_version=SDN-OFAC-${ws.inForce.digest.slice(0, 12)}", "...", "policy_rule=blank_originator"],
+  "payment_id": "TX-00412",
+  "alert_id": "AL-0031",
+  "list_in_force": { "version": "${ws.inForce.id}", "list_digest": "${ws.inForce.digest.slice(0, 16)}...", "entries": ${ws.inForce.addressCount} },
   "receipt": { ...a receipt like the real one below... }
 }`;
-  const webhook = `POST https://your-system.example/tollgate-webhook
+  const webhook = `POST https://your-system.example/tollgate
 Content-Type: application/json
+Tollgate-Signature: t=1763971200,v1=<HMAC-SHA256 hex of "t.body">
 
 {
-  "event": "alert.created",
-  "alert": { "id": "AL-0001", "kind": "hold", "status": "open", "address": "0x0123...4567" },
-  "receipt_id": "rcpt:u1",
-  "created_at": "2026-01-01T00:00:00Z"
+  "id": "evt_u512",
+  "type": "address.newly_listed",
+  "created_at": "2026-11-24T08:00:00.000Z",
+  "receipt_id": "rcpt:u512",
+  "data": { "address": "0x0123...4567", "earlier_payments": ["TX-00087"], "total_usd": 4200, "from_version": "L2", "to_version": "L3", "alert_id": "AL-0032" }
 }`;
   root.append(
-    h('div', { class: 'banner', 'data-state': 'caveat', role: 'note' }, h('span', { class: 'banner__lead', text: 'Examples only' }),
-      h('span', { class: 'banner__detail', text: 'This demo runs entirely in your browser and has no server, so these calls cannot be made against it. The request and webhook shapes below are illustrations of how screening could be called; they are not a published API. The receipt at the end is a real one from this demo ledger and shows the actual receipt format.' })),
-    code('Screen a payment (example request)', request),
-    code('Screen a payment (example response)', response),
-    code('Alert webhook (example payload)', webhook),
+    h('div', { class: 'banner', 'data-state': 'caveat', role: 'note' }, h('span', { class: 'banner__lead', text: 'Try it in Integrations' }),
+      h('span', { class: 'banner__detail', text: 'These are the shapes the API in this demo returns, with illustrative values. Create a key under Admin, Integrations and send real requests from its API console; they run in your browser against this workspace. The receipt at the end is a real one from this demo ledger.' })),
+    code('Screen a transfer (request)', request),
+    code('Screen a transfer (response)', response),
+    code('Webhook delivery', webhook),
     card('A real receipt from this demo', { sub: `${sample.receipt.receipt_id}, signed with the public demo key`, actions: copyButton(JSON.stringify(sample.receipt, null, 2), 'receipt') },
       h('pre', { class: 'rawjson', tabindex: '0', text: JSON.stringify(sample.receipt, null, 2) })),
     card('Checking a receipt yourself', { id: 'api-verify' }, h('div', { class: 'cardbody' }, h('ol', { class: 'steps' },

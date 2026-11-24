@@ -18,6 +18,7 @@ import { renderLists, renderMonitoring } from './view-lists.js';
 import { receiptView, renderActivity, renderExplorer } from './view-receipts.js';
 import { renderEvidence } from './view-evidence.js';
 import { renderApi, renderPolicy } from './view-admin.js';
+import { renderIntegrations } from './view-integrations.js';
 import { renderLive } from './view-live.js';
 import { renderGraph } from './view-graph.js';
 import { liveReceiptView } from './view-livereceipt.js';
@@ -40,7 +41,7 @@ export { WS_ROUTES };
 export const LIST_URL = 'data/ofac_crypto_addresses.json';
 const RENDERERS = {
   dashboard: renderDashboard, live: renderLive, alerts: renderAlerts, screening: renderScreening, monitoring: renderMonitoring, graph: renderGraph,
-  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, policy: renderPolicy, activity: renderActivity, api: renderApi, settings: renderSettings,
+  lists: renderLists, explorer: renderExplorer, evidence: renderEvidence, policy: renderPolicy, activity: renderActivity, integrations: renderIntegrations, api: renderApi, settings: renderSettings,
   network: renderNetwork, archive: renderArchive, proofgap: renderProofGap, chain: renderChain,
 };
 const TOAST_MS = 6000;

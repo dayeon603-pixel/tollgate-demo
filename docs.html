@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>API reference · Tollgate</title>
+  <meta name="description" content="The Tollgate screening API: keys and scopes, screening, receipts, usage, verification and webhooks.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="nav">
+    <div class="wrap nav__inner">
+      <a class="brand" href="./" aria-label="Tollgate home">
+        <img src="favicon.svg" alt="" width="26" height="26">
+        <span>Tollgate</span>
+      </a>
+      <nav class="nav__links" aria-label="Main">
+        <a href="./#product">Product</a>
+        <a href="./#how">How it works</a>
+        <a href="docs.html" aria-current="page">API</a>
+        <a href="app.html">Try it</a>
+        <a href="signin.html">Sign in</a>
+      </nav>
+      <a class="btn btn--ghost btn--sm nav__cta" href="waitlist.html">Join the waitlist</a>
+    </div>
+  </header>
+  <main id="main" class="doc">
+    <div class="wrap doc__wrap">
+      <h1 class="doc__title">API reference</h1>
+      <p class="doc__lead">Your systems send each transfer to Tollgate before it moves. Tollgate checks both addresses against the OFAC SDN list in force, returns the decision with a signed receipt, and keeps every receipt in one hash chain your analysts and examiners can check.</p>
+      <p class="doc__draft">Where this runs: the API is part of the self-hosted kit, which runs on your own servers. The demo workspace (<a href="app.html">Try it</a>, then Admin, Integrations) runs the same routes in your browser, on the bundled OFAC list and synthetic payments, so you can try them without an account.</p>
+
+      <section class="doc__section" aria-labelledby="s-routes">
+        <h2 id="s-routes">Routes</h2>
+        <table class="apitable">
+          <thead><tr><th scope="col">Route</th><th scope="col">Scope</th><th scope="col">What it does</th><th scope="col">Available in</th></tr></thead>
+          <tbody>
+            <tr><td><code>POST /v1/screen</code></td><td><code>screen</code></td><td>Screen one transfer and sign the decision.</td><td>Kit, demo</td></tr>
+            <tr><td><code>GET /v1/receipts/{id}</code></td><td><code>read</code></td><td>Fetch one signed receipt.</td><td>Kit, demo</td></tr>
+            <tr><td><code>GET /v1/usage</code></td><td><code>read</code></td><td>Screening volume per key and period.</td><td>Demo; kit version in development</td></tr>
+            <tr><td><code>POST /v1/verify</code></td><td>none</td><td>Check a receipt or a receipts file.</td><td>Demo; kit version in development</td></tr>
+            <tr><td><code>GET /v1/webhooks</code></td><td><code>webhooks</code></td><td>List webhook endpoints. The kit also creates, deletes, tests and redelivers.</td><td>Kit, demo (list only)</td></tr>
+            <tr><td><code>GET /health</code>, <code>GET /info</code></td><td>none</td><td>Liveness, version, signing key and list provenance.</td><td>Kit</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-auth">
+        <h2 id="s-auth">Keys and scopes</h2>
+        <p>An admin creates keys in the console. A key is <code>tg_</code> followed by 43 characters and is shown once; Tollgate keeps only its SHA-256. Send it on every request:</p>
+        <pre class="api">Authorization: Bearer tg_...</pre>
+        <p>Each key carries scopes: <code>screen</code> for screening, <code>read</code> for receipts and usage, <code>webhooks</code> for webhook settings. The kit adds scopes for screening at a past time and for shared receipts. Give each system its own key with the fewest scopes it needs, so you can revoke one without touching the others. Creating and revoking a key are themselves signed receipts in the ledger.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-errors">
+        <h2 id="s-errors">Errors</h2>
+        <p>Every error has the same shape. The code is stable; the message is for a person and can change.</p>
+        <pre class="api">{ "error": { "code": "insufficient_scope", "message": "This key lacks the screen scope.", "request_id": "req_..." } }</pre>
+        <table class="apitable">
+          <thead><tr><th scope="col">Status</th><th scope="col">Codes</th></tr></thead>
+          <tbody>
+            <tr><td>401</td><td><code>invalid_api_key</code>: no key, or an unknown or revoked key</td></tr>
+            <tr><td>403</td><td><code>insufficient_scope</code></td></tr>
+            <tr><td>409</td><td><code>idempotency_key_reused</code>: the same Idempotency-Key with a different body</td></tr>
+            <tr><td>413</td><td><code>payload_too_large</code></td></tr>
+            <tr><td>422</td><td>Field errors such as <code>bad_address</code>, <code>bad_chain</code>, <code>bad_amount</code>, <code>unknown_field</code>, <code>bad_date</code></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-screen">
+        <h2 id="s-screen">Screen a transfer</h2>
+        <pre class="api">POST /v1/screen
+Authorization: Bearer tg_...
+Idempotency-Key: withdrawal-1001
+Content-Type: application/json
+
+{
+  "chain": "ETH",
+  "to_address": "0x0123456789abcdef0123456789abcdef01234567",
+  "from_address": "0x1111111111111111111111111111111111111111",
+  "amount_usd": 1500,
+  "originator_info_present": false,
+  "reference": "withdrawal-1001"
+}</pre>
+        <p>Matching is exact, ignoring letter case. There is no name or fuzzy matching. <code>outcome</code> is <code>ALLOW</code>, <code>HOLD</code> (a policy rule, such as missing originator details at or above a threshold) or <code>BLOCK</code> (an address is on the list). A hold or a hit opens an alert for an analyst. The response names the list version and digest the decision used, and carries the signed receipt.</p>
+        <p>Send an <code>Idempotency-Key</code> on retries. The same key with the same body returns the stored decision with <code>Idempotent-Replayed: true</code>, signs nothing new and is counted once.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-usage">
+        <h2 id="s-usage">Usage</h2>
+        <p>Tollgate meters per screened transaction: one count per signed decision, by key, with the outcome mix. Seats are not metered.</p>
+        <pre class="api">GET /v1/usage?from=2026-11-01&amp;to=2026-11-30&amp;group=day
+GET /v1/usage?from=2026-11-01&amp;to=2026-11-30&amp;group=month&amp;format=csv</pre>
+        <p>A key sees its own usage. Dates are UTC and inclusive; a range is at most 1,100 days.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-verify">
+        <h2 id="s-verify">Verify a receipt</h2>
+        <p>No key is needed, so a counterparty or an examiner can check what you send them. Send one receipt or a whole receipts file.</p>
+        <pre class="api">POST /v1/verify
+{ "receipt": { ... } }
+
+{ "verdict": "FAIL", "failed_check": "binding", "detail": "...", "signer": "03a1...", "signer_is_this_workspace": true }</pre>
+        <p>The checks are the signature (Ed25519 over the canonical verdict), the binding of the verdict to the action, and the receipt's own hash. A receipts file is also checked link by link. The same checks run offline with the kit's verifier, so nobody has to trust this endpoint.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-hooks">
+        <h2 id="s-hooks">Webhooks</h2>
+        <table class="apitable">
+          <thead><tr><th scope="col">Event</th><th scope="col">When</th></tr></thead>
+          <tbody>
+            <tr><td><code>decision.created</code></td><td>Every signed screening decision.</td></tr>
+            <tr><td><code>list.changed</code></td><td>A new list version was applied, with how many addresses it added and removed.</td></tr>
+            <tr><td><code>address.newly_listed</code></td><td>The new list version contains an address you screened and allowed before. One event per address, naming the earlier payments, so you can review them.</td></tr>
+          </tbody>
+        </table>
+        <p>Each delivery is signed with the endpoint's secret:</p>
+        <pre class="api">Tollgate-Signature: t=1763971200,v1=&lt;hex HMAC-SHA256 of "1763971200." + raw body&gt;</pre>
+        <p>Check it before trusting the body, and refuse a timestamp more than 300 seconds from your clock. In Python:</p>
+        <pre class="api">import hashlib, hmac, time
+
+def verify(secret: str, header: str, body: bytes, tolerance_s: int = 300) -&gt; bool:
+    parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+    stamp, given = int(parts["t"]), parts["v1"]
+    if abs(time.time() - stamp) &gt; tolerance_s:
+        return False
+    want = hmac.new(secret.encode(), f"{stamp}.".encode() + body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(want, given)</pre>
+        <p>Event ids repeat on a retry, so drop an id you have already handled.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-audit">
+        <h2 id="s-audit">Audit export</h2>
+        <p>The Activity log exports every receipt as JSON or CSV. Each row carries <code>prev_hash</code> and <code>this_hash</code>, so a removed, edited or reordered row breaks the chain, and the JSON header names the head hash. Send the head hash to your examiner by a separate route so they can confirm nothing was cut from the end.</p>
+      </section>
+
+      <section class="doc__section" aria-labelledby="s-limits">
+        <h2 id="s-limits">Limits of a decision</h2>
+        <ul class="doc__list">
+          <li>ALLOW means the exact address is not on the list version named in the receipt. It does not mean the address is safe.</li>
+          <li>Only the OFAC SDN digital currency addresses are checked. Names and other lists are out of scope.</li>
+          <li>Tollgate does not move or freeze funds. Your system acts on the decision.</li>
+        </ul>
+        <p><a class="btn btn--primary" href="app.html">Try the API in the demo</a> Open Admin, then Integrations.</p>
+      </section>
+    </div>
+  </main>
+  <footer class="foot">
+    <div class="wrap">
+      <div class="foot__inner">
+        <a class="brand brand--foot" href="./"><img src="favicon.svg" alt="" width="22" height="22"><span>Tollgate</span></a>
+        <p>Dayeon Kang, Founder</p>
+        <a href="mailto:dayeon603@gmail.com">dayeon603@gmail.com</a>
+      </div>
+      <nav class="foot__links" aria-label="Site">
+        <a href="./#product">Product</a>
+        <a href="app.html">Try it</a>
+        <a href="docs.html">API</a>
+        <a href="contact.html">Contact</a>
+        <a href="waitlist.html">Waitlist</a>
+        <a href="report.html">Report a problem</a>
+        <a href="faq.html">FAQ</a>
+        <a href="security.html">Security</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

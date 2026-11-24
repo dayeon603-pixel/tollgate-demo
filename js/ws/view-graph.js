@@ -98,8 +98,10 @@ export function renderGraph(ctx, root) {
       if (!g || y < g.y || y > g.y + g.height || x > g.x + g.width) return null;
       return figRows[Math.floor(((y - g.y) / g.height) * figRows.length)] ?? null;
     };
-    inst.getZr().on('click', (e) => { const r = rowAt(e); if (r) select(r.address); });
-    inst.getZr().on('dblclick', (e) => { const r = rowAt(e); if (r) pivot(r.address); });
+    // Both handlers redraw the view, which disposes this chart. ECharts is still dispatching the same
+    // event to its own listeners at that point, so the redraw waits for the dispatch to finish.
+    inst.getZr().on('click', (e) => { const r = rowAt(e); if (r) setTimeout(() => select(r.address), 0); });
+    inst.getZr().on('dblclick', (e) => { const r = rowAt(e); if (r) setTimeout(() => pivot(r.address), 0); });
     inst.getZr().on('mousemove', (e) => { inst.getZr().setCursorStyle(rowAt(e) ? 'pointer' : 'default'); });
   });
   const lists = figure;

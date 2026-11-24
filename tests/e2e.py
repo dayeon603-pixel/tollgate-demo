@@ -18,7 +18,7 @@ import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e")
-PAGES = ["index.html", "app.html", "contact.html", "report.html", "faq.html", "security.html", "privacy.html", "terms.html"]
+PAGES = ["index.html", "app.html", "docs.html", "contact.html", "report.html", "faq.html", "security.html", "privacy.html", "terms.html"]
 DESKTOP = {"width": 1440, "height": 900}
 PHONE = {"width": 390, "height": 844}
 OK_ADDRESS = "0x000000000000000000000000000000000000c1ea"

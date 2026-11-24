@@ -375,3 +375,10 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; font-variant-ligature
 .signin__user input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
 .signin__user label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; flex: 1; }
 .signin__user label span { color: var(--dim); font-size: 14.5px; }
+
+/* API reference (docs.html) */
+.doc pre.api { margin: 12px 0; padding: 14px 16px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-family: var(--mono); font-size: 13px; line-height: 1.55; color: var(--ink); }
+.apitable { width: 100%; margin: 12px 0; border-collapse: collapse; font-size: 15px; }
+.apitable th, .apitable td { padding: 8px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; vertical-align: top; }
+.apitable th { color: var(--ink); font-weight: 650; }
+.apitable td code { overflow-wrap: anywhere; }

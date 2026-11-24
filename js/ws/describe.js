@@ -12,6 +12,7 @@ export const TYPE_LABELS = {
   watchlist_add: 'Watchlist add', watchlist_remove: 'Watchlist remove', watchlist_rescreen: 'Watchlist re-screen',
   policy_change: 'Policy change', role_change: 'Role change', evidence_export: 'Evidence export', segment_open: 'Segment open',
   network_trust_change: 'Network key change', network_reliance: 'Inbound receipt', gate_decision: 'Payment gate',
+  api_key_change: 'API key change', webhook_change: 'Webhook change',
 };
 
 /** Which filter group a receipt type belongs to in the activity log. */
@@ -19,7 +20,7 @@ export const TYPE_GROUPS = {
   screening: ['stablecoin_payment_screen'],
   cases: ['case_action', 'lookback_hit'],
   lists: ['list_update', 'watchlist_add', 'watchlist_remove', 'watchlist_rescreen'],
-  admin: ['policy_change', 'role_change', 'evidence_export'],
+  admin: ['policy_change', 'role_change', 'evidence_export', 'api_key_change', 'webhook_change'],
   network: ['network_trust_change', 'network_reliance', 'gate_decision'],
   ledger: ['segment_open'],
 };
@@ -38,7 +39,8 @@ export function describe(ws, entry) {
   switch (action.type) {
     case 'stablecoin_payment_screen': {
       const verb = { ALLOW: 'allowed', HOLD: 'held', BLOCK: 'hit on the list' }[p.outcome] ?? p.outcome;
-      return { actor: actorName(ws, p.actor), text: `Screened ${shortAddr(p.beneficiary_address)} for ${money(p.amount_usd ?? null)}: ${verb}${p.policy_rule ? ` (${p.policy_rule.replace('_', ' ')})` : ''}` };
+      const keyName = p.api_key_id ? ws.apiKeys?.find((k) => k.id === p.api_key_id)?.name ?? p.api_key_id : null;
+      return { actor: keyName ? `API key: ${keyName}` : actorName(ws, p.actor), text: `Screened ${shortAddr(p.beneficiary_address)} for ${money(p.amount_usd ?? null)}: ${verb}${p.policy_rule ? ` (${p.policy_rule.replace('_', ' ')})` : ''}` };
     }
     case 'case_action': return { actor: actorName(ws, p.actor), text: `${ACTION_LABELS[p.action] ?? p.action} on ${p.alert_id}${p.note ? `: ${p.note}` : ''}` };
     case 'list_update': return { actor: actorName(ws, p.actor), text: `Applied ${p.to_version}${p.from_version ? ` (from ${p.from_version})` : ' as the first list'}: ${p.entries_added} added, ${p.entries_removed} removed, ${p.lookback_hits} lookback hits` };
@@ -60,6 +62,8 @@ export function describe(ws, entry) {
       return { actor: actorName(ws, p.actor), text: `Refused ${who}'s receipt for ${shortAddr(p.beneficiary_address)} (${p.reason_codes.join(', ')}); screened here` };
     }
     case 'gate_decision': return { actor: actorName(ws, p.actor), text: `Gate ${p.gate === 'RELEASE' ? 'released' : `blocked (${p.reason_codes.join(', ')})`} a transfer to ${shortAddr(p.beneficiary_address)}${p.amount_usd !== undefined ? ` for ${money(p.amount_usd)}` : ''}` };
+    case 'api_key_change': return { actor: actorName(ws, p.actor), text: `${p.event === 'created' ? 'Created' : 'Revoked'} API key ${p.key_name} (${p.key_prefix}..., ${p.scopes.join(', ')})` };
+    case 'webhook_change': return { actor: actorName(ws, p.actor), text: `${p.event === 'created' ? 'Added' : 'Removed'} webhook ${p.url} (${p.events.join(', ')})` };
     case 'segment_open': return { actor: 'System', text: `Opened ledger segment ${p.segment_id} (${p.reason})` };
     default: return { actor: '', text: `${action.type} ${verdict.decision}` };
   }

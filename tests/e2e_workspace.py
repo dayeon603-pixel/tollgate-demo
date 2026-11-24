@@ -20,7 +20,7 @@ import rpc_fixture
 from playwright.sync_api import Page, sync_playwright
 
 log = logging.getLogger("e2e-ws")
-ROUTES = ["dashboard", "alerts", "screening", "monitoring", "lists", "explorer", "evidence", "policy", "activity", "api"]
+ROUTES = ["dashboard", "alerts", "screening", "monitoring", "lists", "explorer", "evidence", "policy", "activity", "integrations", "api"]
 DESKTOP = {"width": 1280, "height": 800}
 PHONE = {"width": 390, "height": 844}
 failures: list[str] = []

@@ -23,6 +23,20 @@ export const MAX_NOTE_CHARS = 500;
 export const MAX_LABEL_CHARS = 60;
 export const MAX_THRESHOLD_USD = 1_000_000_000;
 
+/** API key scopes, as in the self-hosted kit: screen (POST /v1/screen), read (GET routes), webhooks (/v1/webhooks). */
+export const API_SCOPES = ['screen', 'read', 'webhooks'];
+/** Webhook event types this demo can produce. Names follow the kit's webhooks. */
+export const WEBHOOK_EVENTS = ['decision.created', 'list.changed', 'address.newly_listed'];
+export const MAX_API_KEYS = 20;
+export const MAX_WEBHOOKS = 10;
+export const MAX_KEY_NAME_CHARS = 60;
+export const MAX_WEBHOOK_URL_CHARS = 300;
+export const KEY_PREFIX = 'tg_';
+export const WEBHOOK_SECRET_PREFIX = 'whsec_';
+/** Characters of a key shown after creation (the kit shows the same 7). */
+export const KEY_PREFIX_SHOWN = 7;
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._:-]{1,128}$/;
+
 export const DEFAULT_USERS = [
   { id: 'analyst-a', name: 'Analyst A', role: 'analyst' },
   { id: 'analyst-b', name: 'Analyst B', role: 'analyst' },
@@ -37,7 +51,7 @@ const APPROVER_PERMISSIONS = [...ANALYST_PERMISSIONS, 'approve_clear', 'reject_c
 export const PERMISSIONS = {
   analyst: ANALYST_PERMISSIONS,
   approver: APPROVER_PERMISSIONS,
-  admin: [...APPROVER_PERMISSIONS, 'policy', 'roles', 'list_update', 'network_trust'],
+  admin: [...APPROVER_PERMISSIONS, 'policy', 'roles', 'list_update', 'network_trust', 'integrations'],
   /** Read only: may open an evidence pack and check it, may not change or record anything. */
   examiner: ['open_pack'],
 };
@@ -61,6 +75,7 @@ export const PERMISSION_LABELS = {
   network_present: 'Receive inbound payments with receipts',
   gate_use: 'Run a transfer through the payment gate',
   network_trust: 'Register, pin and revoke counterparty keys',
+  integrations: 'Create and revoke API keys and webhooks',
 };
 
 /** Policy settings an admin may change, with the check each value must pass. */
@@ -146,6 +161,12 @@ export class Workspace {
     this.watch = [];
     this.lookbacks = [];
     this.exports = [];
+    /** API keys: { id, name, scopes, hash, prefix, createdBy, createdAt, createdN, revokedAt }. Only the SHA-256 of a key is kept. */
+    this.apiKeys = [];
+    /** Webhook endpoints: { id, url, events, secret, createdBy, createdAt, createdN, removedAt }. */
+    this.webhooks = [];
+    /** Idempotency-Key replays for API screens: `${keyId}|${key}` -> { bodyHash, txId }. */
+    this.idempotency = new Map();
     this.ops = [];
     this.seedCount = 0;
     this.counters = { tx: 0, alert: 0, lookback: 0, reliance: 0, gate: 0 };
@@ -213,6 +234,10 @@ export class Workspace {
       case 'netTrust': result = await this.#netTrust(op); break;
       case 'netReliance': result = await this.#netReliance(op); break;
       case 'gateCheck': result = await this.#gateCheck(op); break;
+      case 'apiKeyCreate': result = await this.#apiKeyCreate(op); break;
+      case 'apiKeyRevoke': result = await this.#apiKeyRevoke(op); break;
+      case 'webhookAdd': result = await this.#webhookAdd(op); break;
+      case 'webhookRemove': result = await this.#webhookRemove(op); break;
       default: refuse('bad_op', `Unknown action "${op.op}".`);
     }
     this.ops.push(op);
@@ -235,8 +260,23 @@ export class Workspace {
   async #screen(op) {
     const actor = op.actor === 'api' ? { id: 'api' } : this.#requireUser(op, 'screen');
     if (!this.inForce) refuse('no_list', 'No list version is in force yet.');
+    const key = op.keyId === undefined ? null : this.#activeKey(op.keyId, 'screen', op.ts);
+    if (key && op.actor !== 'api') refuse('bad_op', 'Only API screens carry a key.');
+    const idem = op.idempotencyKey === undefined ? null : String(op.idempotencyKey);
+    if (idem !== null) {
+      if (!key) refuse('bad_op', 'An Idempotency-Key needs an API key.');
+      if (!IDEMPOTENCY_KEY_RE.test(idem)) refuse('bad_idempotency_key', 'Idempotency-Key is 1 to 128 letters, digits, dot, colon, underscore or dash.');
+      if (typeof op.bodyHash !== 'string' || !/^[0-9a-f]{64}$/.test(op.bodyHash)) refuse('bad_op', 'An idempotent screen records the SHA-256 of its body.');
+      if (this.idempotency.has(`${key.id}|${idem}`)) refuse('idempotency_key_reused', 'That Idempotency-Key was already used with this API key.');
+    }
     const checked = readAddress(op.address);
     if (checked.error) refuse('bad_address', checked.error);
+    let fromAddress = null;
+    if (op.fromAddress !== undefined && op.fromAddress !== null && op.fromAddress !== '') {
+      const from = readAddress(op.fromAddress);
+      if (from.error) refuse('bad_address', `from_address: ${from.error}`);
+      fromAddress = from.address;
+    }
     const amountChecked = op.amount === null || op.amount === undefined ? { amount: null } : readAmount(String(op.amount));
     if (amountChecked.error) refuse('bad_amount', amountChecked.error);
     const txHashRaw = typeof op.txHash === 'string' ? op.txHash.trim() : '';
@@ -245,7 +285,9 @@ export class Workspace {
     const address = checked.address;
     const amountUsd = amountChecked.amount;
     const originator = op.originator === true;
-    const matches = matchIn(version, address);
+    const toMatches = matchIn(version, address);
+    const fromMatches = fromAddress ? matchIn(version, fromAddress) : [];
+    const matches = [...toMatches, ...fromMatches];
     const rule = matches.length ? null : evaluatePolicy(this.policy, { amountUsd, originator });
     const outcome = matches.length ? 'BLOCK' : rule ? 'HOLD' : 'ALLOW';
     const id = `TX-${pad(this.counters.tx + 1, 5)}`;
@@ -257,8 +299,11 @@ export class Workspace {
     if (amountUsd !== null) params.amount_usd = amountUsd;
     if (op.batchId) params.batch_id = String(op.batchId);
     if (rule) params.policy_rule = rule.id;
+    if (key) params.api_key_id = key.id;
+    if (fromAddress) params.originator_address = fromAddress;
+    if (op.reference !== undefined && op.reference !== null) params.reference = String(op.reference).slice(0, 128);
     const reasons = matches.length
-      ? matches.map((e) => `sanctions_hit=SDN-${e.uid}-${e.chain}`)
+      ? [...toMatches.map((e) => `sanctions_hit=SDN-${e.uid}-${e.chain}`), ...fromMatches.map((e) => `sanctions_hit=SDN-${e.uid}-${e.chain}`), ...(fromMatches.length ? ['side=originator'] : [])]
       : rule ? [`policy_rule=${rule.id}`, `threshold_usd=${rule.thresholdUsd}`] : ['clean'];
     const entry = await this.#sign({ type: 'stablecoin_payment_screen', params, decision: outcome === 'BLOCK' ? 'DENY' : outcome === 'HOLD' ? 'HOLD' : 'ALLOW', outcome, reasons }, version, op);
     this.counters.tx++;
@@ -266,14 +311,16 @@ export class Workspace {
       id, ts: op.ts, address, amountUsd, originator, outcome, rule: rule?.id ?? null, entries: matches,
       versionId: version.id, receiptId: entry.receipt.receipt_id, source: op.source ?? 'manual', batchId: op.batchId ?? null,
       txHash, txHashGenerated: !txHashRaw, actor: actor.id, flagged: false, alertId: null,
+      keyId: key?.id ?? null, fromAddress, reference: params.reference ?? null,
     };
+    if (idem !== null) this.idempotency.set(`${key.id}|${idem}`, { bodyHash: op.bodyHash, txId: id });
     this.txs.push(tx);
     this.txById.set(id, tx);
     if (op.relianceId) this.linkRescreen(op.relianceId, id);
     const created = [];
     if (outcome !== 'ALLOW') {
       const alert = this.#newAlert({
-        kind: outcome === 'BLOCK' ? 'hit' : 'hold', address, txIds: [id], amountUsd: amountUsd ?? 0, entries: matches,
+        kind: outcome === 'BLOCK' ? 'hit' : 'hold', address: toMatches.length || !fromMatches.length ? address : fromAddress, txIds: [id], amountUsd: amountUsd ?? 0, entries: matches,
         rule: rule?.id ?? null, versionId: version.id, ts: op.ts, receiptId: entry.receipt.receipt_id,
       });
       tx.alertId = alert.id;
@@ -555,6 +602,94 @@ export class Workspace {
       this.watch.splice(index, 0, removed);
       throw error;
     }
+  }
+
+  // ---- API keys and webhooks ---------------------------------------------------------------
+
+  /**
+   * The key with this id if it is active and holds `scope` at time `ts`.
+   * Raises WorkspaceError (invalid_api_key, insufficient_scope) otherwise.
+   */
+  #activeKey(keyId, scope, ts) {
+    const key = this.apiKeys.find((k) => k.id === keyId);
+    if (!key || (key.revokedAt && key.revokedAt <= ts)) refuse('invalid_api_key', 'Unknown or revoked API key.');
+    if (!key.scopes.includes(scope)) refuse('insufficient_scope', `This key lacks the ${scope} scope.`);
+    return key;
+  }
+
+  /** The key whose SHA-256 is `hash` (hex), active or revoked, or null. */
+  keyByHash(hash) {
+    return this.apiKeys.find((k) => k.hash === hash) ?? null;
+  }
+
+  async #signIntegration(type, params, op, outcome) {
+    return this.#sign({ type, params, decision: 'RECORD', outcome, reasons: [`event=${params.event}`, `actor=${params.actor}`] }, this.inForce, op);
+  }
+
+  async #apiKeyCreate(op) {
+    const user = this.#requireUser(op, 'integrations');
+    if (!this.inForce) refuse('no_list', 'No list version is in force yet.');
+    const name = typeof op.name === 'string' ? op.name.trim() : '';
+    if (!name) refuse('name_required', 'Name the key after the system that will use it.');
+    if (name.length > MAX_KEY_NAME_CHARS) refuse('name_too_long', `Key names are limited to ${MAX_KEY_NAME_CHARS} characters.`);
+    const scopes = Array.isArray(op.scopes) ? [...new Set(op.scopes)] : [];
+    if (!scopes.length) refuse('scopes_required', 'Give the key at least one scope.');
+    const unknown = scopes.filter((s) => !API_SCOPES.includes(s));
+    if (unknown.length) refuse('bad_scope', `Unknown scope ${unknown[0]}. Use ${API_SCOPES.join(', ')}.`);
+    if (typeof op.keyHash !== 'string' || !/^[0-9a-f]{64}$/.test(op.keyHash)) refuse('bad_op', 'A key is stored as the SHA-256 of its secret.');
+    if (typeof op.prefix !== 'string' || !op.prefix.startsWith(KEY_PREFIX) || op.prefix.length !== KEY_PREFIX_SHOWN) refuse('bad_op', 'The key prefix is the first characters of the secret.');
+    if (typeof op.keyId !== 'string' || !/^key_[A-Za-z0-9]{4,32}$/.test(op.keyId)) refuse('bad_op', 'Key ids look like key_ followed by letters and digits.');
+    if (this.apiKeys.some((k) => k.id === op.keyId || k.hash === op.keyHash)) refuse('duplicate', 'That key already exists.');
+    if (this.apiKeys.filter((k) => !k.revokedAt).length >= MAX_API_KEYS) refuse('too_many_keys', `At most ${MAX_API_KEYS} active keys. Revoke one first.`);
+    const sorted = API_SCOPES.filter((s) => scopes.includes(s));
+    const entry = await this.#signIntegration('api_key_change', { event: 'created', key_id: op.keyId, key_name: name, key_prefix: op.prefix, scopes: sorted, actor: user.id }, op, 'KEY_CREATED');
+    const key = { id: op.keyId, name, scopes: sorted, hash: op.keyHash, prefix: op.prefix, createdBy: user.id, createdAt: op.ts, createdN: entry.n, revokedAt: null, receiptId: entry.receipt.receipt_id };
+    this.apiKeys.push(key);
+    return { key, receipt: entry.receipt, created: [] };
+  }
+
+  async #apiKeyRevoke(op) {
+    const user = this.#requireUser(op, 'integrations');
+    const key = this.apiKeys.find((k) => k.id === op.keyId);
+    if (!key) refuse('not_found', 'That key does not exist.');
+    if (key.revokedAt) refuse('blocked', 'That key is already revoked.');
+    const entry = await this.#signIntegration('api_key_change', { event: 'revoked', key_id: key.id, key_name: key.name, key_prefix: key.prefix, scopes: key.scopes, actor: user.id }, op, 'KEY_REVOKED');
+    key.revokedAt = op.ts;
+    return { key, receipt: entry.receipt, created: [] };
+  }
+
+  async #webhookAdd(op) {
+    const user = this.#requireUser(op, 'integrations');
+    if (!this.inForce) refuse('no_list', 'No list version is in force yet.');
+    const url = typeof op.url === 'string' ? op.url.trim() : '';
+    if (url.length > MAX_WEBHOOK_URL_CHARS) refuse('bad_url', `Webhook URLs are limited to ${MAX_WEBHOOK_URL_CHARS} characters.`);
+    let parsed = null;
+    try { parsed = new URL(url); } catch { parsed = null; }
+    if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) refuse('bad_url', 'Give an https:// URL without a user name or password in it.');
+    const events = Array.isArray(op.events) ? [...new Set(op.events)] : [];
+    if (!events.length) refuse('events_required', 'Pick at least one event.');
+    const unknown = events.filter((e) => !WEBHOOK_EVENTS.includes(e));
+    if (unknown.length) refuse('bad_event', `Unknown event ${unknown[0]}. Use ${WEBHOOK_EVENTS.join(', ')}.`);
+    if (typeof op.secret !== 'string' || !op.secret.startsWith(WEBHOOK_SECRET_PREFIX) || op.secret.length < WEBHOOK_SECRET_PREFIX.length + 32) refuse('bad_op', 'A webhook needs a signing secret.');
+    if (typeof op.hookId !== 'string' || !/^wh_[A-Za-z0-9]{4,32}$/.test(op.hookId)) refuse('bad_op', 'Webhook ids look like wh_ followed by letters and digits.');
+    if (this.webhooks.some((w) => w.id === op.hookId)) refuse('duplicate', 'That webhook already exists.');
+    if (this.webhooks.filter((w) => !w.removedAt).length >= MAX_WEBHOOKS) refuse('too_many_webhooks', `At most ${MAX_WEBHOOKS} webhooks. Remove one first.`);
+    const sorted = WEBHOOK_EVENTS.filter((e) => events.includes(e));
+    const entry = await this.#signIntegration('webhook_change', { event: 'created', webhook_id: op.hookId, url: parsed.href, events: sorted, actor: user.id }, op, 'WEBHOOK_CREATED');
+    const hook = { id: op.hookId, url: parsed.href, events: sorted, secret: op.secret, createdBy: user.id, createdAt: op.ts, createdN: entry.n, removedAt: null, removedN: null, receiptId: entry.receipt.receipt_id };
+    this.webhooks.push(hook);
+    return { hook, receipt: entry.receipt, created: [] };
+  }
+
+  async #webhookRemove(op) {
+    const user = this.#requireUser(op, 'integrations');
+    const hook = this.webhooks.find((w) => w.id === op.hookId);
+    if (!hook) refuse('not_found', 'That webhook does not exist.');
+    if (hook.removedAt) refuse('blocked', 'That webhook is already removed.');
+    const entry = await this.#signIntegration('webhook_change', { event: 'removed', webhook_id: hook.id, url: hook.url, events: hook.events, actor: user.id }, op, 'WEBHOOK_REMOVED');
+    hook.removedAt = op.ts;
+    hook.removedN = entry.n;
+    return { hook, receipt: entry.receipt, created: [] };
   }
 
   // ---- receipt network and payment gate ------------------------------------------------------

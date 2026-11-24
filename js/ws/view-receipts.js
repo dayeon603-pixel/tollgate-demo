@@ -1,5 +1,6 @@
 /** Receipt explorer (search, filter, detail with the real verifier) and the activity log. */
-import { card, clear, copyButton, dataTable, empty, field, h, icon, kv, mono, outcomeTag, pager, select, shortAddr, shortHash, stamp, stampPrecise } from './dom.js';
+import { card, clear, copyButton, dataTable, download, empty, field, h, icon, kv, mono, outcomeTag, pager, select, shortAddr, shortHash, stamp, stampPrecise } from './dom.js';
+import { auditCsv, auditJson } from './api.js';
 import { pageSize } from './settings.js';
 import { zoneName } from './dom.js';
 import { actorName, describe, TYPE_GROUPS, TYPE_LABELS } from './describe.js';
@@ -180,6 +181,8 @@ export function renderActivity(ctx, root) {
     }), pager({ page: activity.page, size: 40, total: rows.length, onChange: (p) => { activity.page = p; draw(); } }));
   };
   root.append(
-    card('Activity log', { id: 'ac-title' }, h('div', { class: 'filters' }, field('Show', select('ac-group', groups, activity.group, (v) => { activity.group = v; activity.page = 0; draw(); })), field('Who', select('ac-actor', actors, activity.actor, (v) => { activity.actor = v; activity.page = 0; draw(); }))), host));
+    card('Activity log', { id: 'ac-title', sub: 'Every entry is a signed receipt in one hash chain. The exports carry prev_hash and this_hash for each receipt, and the JSON export holds the full receipts so anyone can re-check them.', actions: h('div', { class: 'btnrow' },
+      h('button', { type: 'button', class: 'btn', id: 'ac-export-json', on: { click: () => download(`tollgate-audit-${dayKey(new Date())}.json`, auditJson(ws, { exportedAt: new Date().toISOString() }), 'application/json') } }, 'Export JSON'),
+      h('button', { type: 'button', class: 'btn', id: 'ac-export-csv', on: { click: () => download(`tollgate-audit-${dayKey(new Date())}.csv`, auditCsv(ws), 'text/csv') } }, 'Export CSV')) }, h('div', { class: 'filters' }, field('Show', select('ac-group', groups, activity.group, (v) => { activity.group = v; activity.page = 0; draw(); })), field('Who', select('ac-actor', actors, activity.actor, (v) => { activity.actor = v; activity.page = 0; draw(); }))), host));
   draw();
 }
